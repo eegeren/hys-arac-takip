@@ -1,0 +1,54 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: hys-fleet_db
+    environment:
+      POSTGRES_DB: hysfleet
+      POSTGRES_USER: fleet_user
+      POSTGRES_PASSWORD: fleet_pass
+      TZ: Europe/Istanbul
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./api/migrations:/docker-entrypoint-initdb.d:ro
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    container_name: hys-fleet_mailhog
+    ports:
+      - "8025:8025"
+
+  api:
+    build: ./api
+    container_name: hys-fleet_api
+    environment:
+      DATABASE_URL: postgresql+psycopg://fleet_user:fleet_pass@db:5432/hysfleet
+      TZ: Europe/Istanbul
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      SMTP_USER: 
+      SMTP_PASS: 
+      MAIL_FROM: alerts@hysfleet.local
+      NOTIFY_THRESHOLDS: 30,15,7,1
+      PANEL_URL: http://localhost:3000
+    depends_on:
+      - db
+      - mailhog
+    ports:
+      - "8000:8000"
+
+  web:
+    build: ./web
+    container_name: hys-fleet_web
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    depends_on:
+      - api
+    ports:
+      - "3000:3000"
+
+volumes:
+  db_data:

@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: hys_fleet
+      POSTGRES_USER: hys
+      POSTGRES_PASSWORD: hys_pass
+      TZ: Europe/Istanbul
+    ports: ["5432:5432"]
+    volumes:
+      - dbdata:/var/lib/postgresql/data
+      - ./api/migrations:/docker-entrypoint-initdb.d:ro
+
+  api:
+    build: ./api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://hys:hys_pass@db:5432/hys_fleet
+      SMTP_HOST: ""
+      SMTP_PORT: ""
+      SMTP_USER: ""
+      SMTP_PASS: ""
+      MAIL_FROM: bildirim@hys.local
+      MAIL_TO: aractakip@hysavm.com
+      MAIL_PROVIDER: RESEND
+      RESEND_API_KEY: re_6rs5zBCs_LaMEQkAQx8rPxGTPsBXKmfmJ
+      VEHICLE_ADMIN_PASSWORD: hys123
+      NOTIFY_THRESHOLDS_DAYS: "30,15,10,7,1"
+      TZ: Europe/Istanbul
+      PANEL_URL: http://localhost:3000
+    depends_on: [db]
+    ports: ["8000:8000"]
+
+  web:
+    build: ./web
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on: [api]
+    ports: ["3000:3000"]
+
+volumes:
+  dbdata:
