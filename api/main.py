@@ -2,6 +2,10 @@ from fastapi import APIRouter
 from fastapi.staticfiles import StaticFiles
 import os
 
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import Request
+from starlette.responses import FileResponse, JSONResponse
+
 import os, smtplib
 from datetime import date, timedelta, datetime, timezone
 from fastapi import FastAPI, Query, HTTPException, Response
@@ -583,3 +587,14 @@ app.include_router(api)
 STATIC_DIR = os.getenv("STATIC_DIR", "/app/webout")
 if os.path.isdir(STATIC_DIR):
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
+# --- SPA fallback: /api dışındaki 404'larda index.html döndür ---
+@app.exception_handler(StarletteHTTPException)
+async def spa_fallback(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404 and not request.url.path.startswith("/api"):
+        index_path = os.path.join(STATIC_DIR, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+    # aksi halde normal 404
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+
