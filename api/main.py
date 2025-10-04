@@ -51,8 +51,6 @@ app.add_middleware(
 
 # --- Static web (Next.js export) ---
 STATIC_DIR = os.getenv("STATIC_DIR", "/app/webout")
-if os.path.isdir(STATIC_DIR):
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 # SPA fallback: /api dışındaki 404'larda index.html döndür
 @app.exception_handler(StarletteHTTPException)
@@ -657,3 +655,7 @@ def debug_run_notifications_api(admin_password: str = Query(..., description="Bi
 @app.get("/api/debug/send_test")
 def debug_send_test_api(to: EmailStr = Query(..., description="Alıcı e-posta")):
     return debug_send_test(to)
+
+# --- Mount static after API routes (so /api/* takes precedence) ---
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
