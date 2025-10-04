@@ -255,9 +255,6 @@ def list_vehicles(q: str | None = None):
                 ORDER BY doc_type, valid_to
                 """
             )
-        except Exception as e:
-            print(f"notify_job mail error for {r['plate']} - {r['doc_type']}: {e}")
-            continue
         ).mappings().all()
 
     docs_by_vehicle: dict[int, list[dict[str, object]]] = {}
@@ -608,7 +605,6 @@ def notify_job():
                 print(f"notify_job mail error for {r['plate']} - {r['doc_type']}: {e}")
                 continue
 
-# DEBUG: manuel test endpoint'i (sadece dev ortamı)
 @app.get("/debug/send_test")
 def debug_send_test(to: EmailStr = Query(..., description="Alıcı e-posta")):
     try:
