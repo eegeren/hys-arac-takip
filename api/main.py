@@ -4,6 +4,7 @@ from fastapi import FastAPI, Query, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
+from zoneinfo import ZoneInfo
 from typing import Mapping
 from apscheduler.schedulers.background import BackgroundScheduler
 from email.mime.text import MIMEText
@@ -62,6 +63,22 @@ async def spa_fallback(request: Request, exc: StarletteHTTPException):
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 EMAIL_TEMPLATE = """
+# --- Time helpers (use app TZ instead of container default) ---
+def _tz():
+    try:
+        return ZoneInfo(os.getenv("TZ", "Europe/Istanbul"))
+    except Exception:
+        return timezone.utc
+
+def today_local() -> date:
+    # Always compute "today" based on configured TZ to avoid off-by-one issues
+    return datetime.now(timezone.utc).astimezone(_tz()).date()
+
+def days_left_for(d: date | None) -> int | None:
+    if d is None:
+        return None
+    return (d - today_local()).days
+
 <h3>🚨 Araç Belge Uyarısı</h3>
 <p><b>Plaka:</b> {plate}<br/>
 <b>Belge:</b> {doc_type}<br/>
@@ -73,7 +90,7 @@ EMAIL_TEMPLATE = """
 def _document_status(valid_to: date | None) -> str:
     if valid_to is None:
         return "unknown"
-    today = date.today()
+    today = today_local()
     delta = (valid_to - today).days
     if delta < 0:
         return "expired"
@@ -94,7 +111,7 @@ def resend_available() -> bool:
 def send_via_smtp(to_email: str, subject: str, html_body: str):
     if not smtp_available():
         raise RuntimeError("SMTP yapılandırılmadı")
-    target = MAIL_TO or to_email
+    target = to_email or MAIL_TO
     msg = MIMEMultipart("alternative")
     msg["From"] = MAIL_FROM
     msg["To"] = target
@@ -113,7 +130,7 @@ def send_via_resend(to_email: str, subject: str, html_body: str):
         "Authorization": f"Bearer {RESEND_API_KEY}",
         "Content-Type": "application/json",
     }
-    target = MAIL_TO or to_email
+    target = to_email or MAIL_TO
     payload = {
         "from": MAIL_FROM,
         "to": [target],
@@ -238,6 +255,9 @@ def list_vehicles(q: str | None = None):
                 ORDER BY doc_type, valid_to
                 """
             )
+        except Exception as e:
+            print(f"notify_job mail error for {r['plate']} - {r['doc_type']}: {e}")
+            continue
         ).mappings().all()
 
     docs_by_vehicle: dict[int, list[dict[str, object]]] = {}
@@ -399,7 +419,7 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
 
     doc_response = _make_document_response(row)
 
-    days_left = (payload.valid_to - date.today()).days if payload.valid_to else None
+    days_left = days_left_for(payload.valid_to)
     mail_html = EMAIL_TEMPLATE.format(
         plate=vehicle["plate"],
         doc_type=normal_type,
@@ -408,7 +428,7 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
         panel_url=f"{PANEL_URL}/vehicles?plate={vehicle['plate']}"
     )
     try:
-        send_mail(MAIL_TO, f"Belge Eklendi: {vehicle['plate']} - {normal_type}", mail_html)
+        send_mail(vehicle.get("responsible_email") or MAIL_TO, f"Belge Eklendi: {vehicle['plate']} - {normal_type}", mail_html)
     except Exception as exc:
         print(f"Belge ekleme maili gönderilemedi: {exc}")
 
@@ -501,7 +521,7 @@ def delete_document(document_id: int, admin_password: str = Query(..., descripti
 
 @app.get("/expiring")
 def expiring(days: int = Query(30, ge=1, le=365)):
-    today = date.today()
+    today = today_local()
     until = today + timedelta(days=days)
     sql = """
       select d.id as doc_id, v.plate, d.doc_type, d.valid_from, d.valid_to, d.note, v.responsible_email,
@@ -532,7 +552,7 @@ def expiring(days: int = Query(30, ge=1, le=365)):
     return result
 
 def notify_job():
-    today = date.today()
+    today = today_local()
     with engine.begin() as con:
         sql = """
           with due as (
@@ -554,7 +574,8 @@ def notify_job():
         for r in rows:
             if not r["responsible_email"]:
                 continue
-            html = EMAIL_TEMPLATE.format(
+            try:
+                html = EMAIL_TEMPLATE.format(
                 plate=r["plate"],
                 doc_type=r["doc_type"],
                 valid_to=r["valid_to"],
@@ -603,8 +624,11 @@ def documents_upcoming(days: int = Query(60, ge=1, le=365)):
 def debug_run_notifications(admin_password: str = Query(..., description="Bildirim çalıştırma şifresi")):
     if admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
-    notify_job()
-    return {"ok": True, "ran": True}
+    try:
+        notify_job()
+        return {"ok": True, "ran": True}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
 
 
 scheduler = BackgroundScheduler(timezone=os.getenv("TZ","Europe/Istanbul"))
