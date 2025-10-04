@@ -1,4 +1,5 @@
 "use client";
+import { apiUrl } from "../lib/api";
 
 import { useEffect, useState } from "react";
 
@@ -14,8 +15,6 @@ type UpcomingDocument = {
   status: string;
   responsible_email?: string | null;
 };
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const statusClass = (status: string) => {
   switch (status) {
@@ -42,7 +41,7 @@ export default function DashboardPage() {
 
     const fetchDocs = async () => {
       try {
-        const res = await fetch(`${API_BASE}/documents/upcoming?days=60`, {
+        const res = await fetch(apiUrl("/api/documents/upcoming?days=60"), {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error("API hatası");
