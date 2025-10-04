@@ -1,5 +1,5 @@
-import { apiUrl } from "../../lib/api";
 "use client";
+import { apiUrl } from "../../lib/api";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -71,7 +71,6 @@ type VehicleFormState = {
   responsible_email: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? apiUrl("";
 
 const initialFormState: VehicleFormState = {
   plate: "",
@@ -173,7 +172,7 @@ export default function VehiclesPage() {
   const fetchVehicles = useCallback(async () => {
     setVehiclesLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/vehicles`);
+      const res = await fetch(apiUrl("/api/vehicles"));
       if (!res.ok) throw new Error("Araçlar yüklenemedi");
       const data = (await res.json()) as Vehicle[];
       setVehicles(
@@ -199,7 +198,7 @@ export default function VehiclesPage() {
   const fetchUpcoming = useCallback(async () => {
     setUpcomingLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/documents/upcoming?days=60`);
+      const res = await fetch(apiUrl("/api/documents/upcoming?days=60"));
       if (!res.ok) throw new Error("Yaklaşan belgeler alınamadı");
       const data = (await res.json()) as UpcomingDocument[];
       setUpcomingDocs(
@@ -277,7 +276,7 @@ export default function VehiclesPage() {
 
     try {
       setFormSubmitting(true);
-      const res = await fetch(`${API_BASE}/vehicles`, {
+      const res = await fetch(apiUrl("/api/vehicles"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -306,7 +305,7 @@ export default function VehiclesPage() {
     setDeleteBusyId(vehicleId);
     try {
       const res = await fetch(
-        `${API_BASE}/vehicles/${vehicleId}?admin_password=${encodeURIComponent(adminPassword)}`,
+        `/api/vehicles/${vehicleId}?admin_password=${encodeURIComponent(adminPassword)}`,
         { method: "DELETE" }
       );
       if (!res.ok) {
@@ -349,11 +348,11 @@ export default function VehiclesPage() {
 
     try {
       setDocSubmitting(true);
-      const res = await fetch(`${API_BASE}/vehicles/${selectedVehicleId}/documents`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      const res = await fetch(apiUrl("/api/documents"), {
+       method: "POST",
+       headers: { "Content-Type": "application/json" },
+       body: JSON.stringify(payload),
+         });
       if (!res.ok) {
         const errorPayload = await res.json().catch(() => ({}));
         throw new Error(errorPayload.detail ?? "Belge eklenemedi");
@@ -377,8 +376,8 @@ export default function VehiclesPage() {
     if (!confirm("Belgeyi silmek istediğinize emin misiniz?")) return;
     setDocDeleteBusyId(documentId);
     try {
-      const res = await fetch(
-        `${API_BASE}/documents/${documentId}?admin_password=${encodeURIComponent(adminPassword)}`,
+          const res = await fetch(
+        apiUrl(`/api/documents/${documentId}?admin_password=${encodeURIComponent(adminPassword)}`),
         { method: "DELETE" }
       );
       if (!res.ok) {
