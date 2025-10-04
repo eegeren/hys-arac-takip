@@ -103,6 +103,7 @@ const formatDaysLabel = (days?: number | null) => {
 };
 
 export default function VehiclesPage() {
+  const { mutate } = useSWRConfig();
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [vehiclesLoading, setVehiclesLoading] = useState(true);
   const [upcomingDocs, setUpcomingDocs] = useState<UpcomingDocument[]>([]);
@@ -277,8 +278,10 @@ export default function VehiclesPage() {
     try {
       setFormSubmitting(true);
       const res = await fetch(apiUrl("/api/vehicles"), {
+      const res = await fetch(apiUrl("/api/vehicles"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+      await mutate(apiUrl("/api/vehicles"));
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -349,8 +352,10 @@ export default function VehiclesPage() {
     try {
       setDocSubmitting(true);
       const res = await fetch(apiUrl("/api/documents"), {
+      const res = await fetch(apiUrl("/api/documents"), {
        method: "POST",
        headers: { "Content-Type": "application/json" },
+      await mutate(apiUrl("/api/vehicles"));
        body: JSON.stringify(payload),
          });
       if (!res.ok) {
