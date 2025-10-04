@@ -16,7 +16,7 @@ type UpcomingDocument = {
   responsible_email?: string | null;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? apiUrl("";
 
 const DOC_TYPE_LABELS: Record<string, string> = {
   inspection: "Muayene",

@@ -71,7 +71,7 @@ type VehicleFormState = {
   responsible_email: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? apiUrl("";
 
 const initialFormState: VehicleFormState = {
   plate: "",
