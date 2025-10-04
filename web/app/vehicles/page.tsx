@@ -2,6 +2,7 @@
 import { apiUrl } from "../../lib/api";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useSWRConfig } from "swr";
 
 const DOCUMENT_TYPES = [
   { value: "inspection", label: "Muayene" },
@@ -274,14 +275,12 @@ export default function VehiclesPage() {
       setFormError("Yıl bilgisi sayısal olmalı");
       return;
     }
-
+  
     try {
       setFormSubmitting(true);
       const res = await fetch(apiUrl("/api/vehicles"), {
-      const res = await fetch(apiUrl("/api/vehicles"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-      await mutate(apiUrl("/api/vehicles"));
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -290,6 +289,7 @@ export default function VehiclesPage() {
       }
       setFormState(initialFormState);
       setToast("Araç başarıyla eklendi");
+      await mutate(apiUrl("/api/vehicles"));
       await refreshData();
     } catch (error) {
       console.error(error);
@@ -308,7 +308,7 @@ export default function VehiclesPage() {
     setDeleteBusyId(vehicleId);
     try {
       const res = await fetch(
-        `/api/vehicles/${vehicleId}?admin_password=${encodeURIComponent(adminPassword)}`,
+        apiUrl(`/api/vehicles/${vehicleId}?admin_password=${encodeURIComponent(adminPassword)}`),
         { method: "DELETE" }
       );
       if (!res.ok) {
@@ -340,30 +340,30 @@ export default function VehiclesPage() {
       setDocError("Bitiş tarihi zorunlu");
       return;
     }
-
+  
     const payload = {
+      vehicle_id: selectedVehicleId,
       doc_type: docForm.doc_type.trim() || DOCUMENT_TYPES[0].value,
       valid_from: docForm.valid_from || null,
       valid_to: docForm.valid_to,
       note: docForm.note.trim() || null,
       admin_password: adminPassword,
     };
-
+  
     try {
       setDocSubmitting(true);
       const res = await fetch(apiUrl("/api/documents"), {
-      const res = await fetch(apiUrl("/api/documents"), {
-       method: "POST",
-       headers: { "Content-Type": "application/json" },
-      await mutate(apiUrl("/api/vehicles"));
-       body: JSON.stringify(payload),
-         });
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) {
         const errorPayload = await res.json().catch(() => ({}));
         throw new Error(errorPayload.detail ?? "Belge eklenemedi");
       }
       setDocForm((prev) => ({ ...prev, valid_from: "", valid_to: "", note: "" }));
       setToast("Belge kaydı oluşturuldu");
+      await mutate(apiUrl("/api/vehicles"));
       await refreshData();
     } catch (error) {
       console.error(error);
