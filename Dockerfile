@@ -4,7 +4,7 @@ WORKDIR /app
 COPY web/package.json web/package-lock.json ./web/
 RUN cd web && npm ci
 COPY web ./web
-RUN cd web && npm run build && npx next export -o out
+RUN cd web && npm run build && npx next export
 
 # ---- Stage 2: FastAPI + serve static ----
 FROM python:3.12-slim
