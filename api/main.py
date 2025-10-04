@@ -401,7 +401,7 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
 
     with engine.begin() as con:
         vehicle = con.execute(
-            text("SELECT plate FROM vehicles WHERE id = :id"), {"id": vehicle_id}
+            text("SELECT plate, responsible_email FROM vehicles WHERE id = :id"), {"id": vehicle_id}
         ).mappings().first()
         if vehicle is None:
             raise HTTPException(status_code=404, detail="Araç bulunamadı")
@@ -420,6 +420,7 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
     doc_response = _make_document_response(row)
 
     days_left = days_left_for(payload.valid_to)
+
     mail_html = EMAIL_TEMPLATE.format(
         plate=vehicle["plate"],
         doc_type=normal_type,
@@ -427,15 +428,18 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
         days_left=days_left if days_left is not None else "-",
         panel_url=f"{PANEL_URL}/vehicles?plate={vehicle['plate']}"
     )
+
+    # Bilgi maili
     try:
         send_mail(vehicle.get("responsible_email") or MAIL_TO, f"Belge Eklendi: {vehicle['plate']} - {normal_type}", mail_html)
     except Exception as exc:
         print(f"Belge ekleme maili gönderilemedi: {exc}")
 
+    # Eşik uyarısı
     if days_left is not None and days_left in THRESHOLDS:
         try:
             send_mail(
-                MAIL_TO,
+                vehicle.get("responsible_email") or MAIL_TO,
                 f"Araç Belge Uyarısı: {vehicle['plate']} - {normal_type} ({days_left}g)",
                 EMAIL_TEMPLATE.format(
                     plate=vehicle["plate"],
