@@ -1,3 +1,4 @@
+import { apiUrl } from "../lib/api";
 "use client";
 
 import { useEffect, useState } from "react";
