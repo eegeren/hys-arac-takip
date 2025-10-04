@@ -580,30 +580,33 @@ def notify_job():
                 continue
             try:
                 html = EMAIL_TEMPLATE.format(
-                plate=r["plate"],
-                doc_type=r["doc_type"],
-                valid_to=r["valid_to"],
-                days_left=r["days_left"],
-                panel_url=f"{PANEL_URL}/vehicles?plate={r['plate']}",
-            )
-            send_mail(
-                r["responsible_email"],
-                f"Araç Belge Uyarısı: {r['plate']} - {r['doc_type']} ({r['days_left']}g)",
-                html,
-            )
-            con.execute(
-                text(
-                    """
-              insert into notifications_log(document_id, threshold_days, sent_at)
-              values(:d,:t,:sent_at)
-            """
-                ),
-                {
-                    "d": r["doc_id"],
-                    "t": r["days_left"],
-                    "sent_at": datetime.now(timezone.utc),
-                },
-            )
+                    plate=r["plate"],
+                    doc_type=r["doc_type"],
+                    valid_to=r["valid_to"],
+                    days_left=r["days_left"],
+                    panel_url=f"{PANEL_URL}/vehicles?plate={r['plate']}",
+                )
+                send_mail(
+                    r["responsible_email"],
+                    f"Araç Belge Uyarısı: {r['plate']} - {r['doc_type']} ({r['days_left']}g)",
+                    html,
+                )
+                con.execute(
+                    text(
+                        """
+                        insert into notifications_log(document_id, threshold_days, sent_at)
+                        values(:d,:t,:sent_at)
+                        """
+                    ),
+                    {
+                        "d": r["doc_id"],
+                        "t": r["days_left"],
+                        "sent_at": datetime.now(timezone.utc),
+                    },
+                )
+            except Exception as e:
+                print(f"notify_job mail error for {r['plate']} - {r['doc_type']}: {e}")
+                continue
 
 # DEBUG: manuel test endpoint'i (sadece dev ortamı)
 @app.get("/debug/send_test")
