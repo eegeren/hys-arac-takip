@@ -296,6 +296,7 @@ def list_vehicles(q: str | None = None):
 
     return result
 
+
 @app.post("/vehicles", status_code=201)
 def create_vehicle(v: VehicleCreateRequest):
     if v.admin_password != VEHICLE_ADMIN_PASSWORD:
