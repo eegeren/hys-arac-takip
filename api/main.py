@@ -1,3 +1,7 @@
+from fastapi import APIRouter
+from fastapi.staticfiles import StaticFiles
+import os
+
 import os, smtplib
 from datetime import date, timedelta, datetime, timezone
 from fastapi import FastAPI, Query, HTTPException, Response
@@ -34,6 +38,8 @@ VEHICLE_ADMIN_PASSWORD = os.getenv("VEHICLE_ADMIN_PASSWORD", "hys123")
 
 engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
 app = FastAPI(title="HYS Fleet API", version="1.1.0")
+api = APIRouter(prefix="/api")
+api = APIRouter(prefix="/api")
 
 allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
 app.add_middleware(
@@ -177,11 +183,11 @@ class DocumentResponse(BaseModel):
     days_left: int | None
     status: str
 
-@app.get("/healthz")
+@api.get("/healthz")
 def health():
     return {"ok": True, "time": datetime.now().isoformat(), "mail_provider": MAIL_PROVIDER}
 
-@app.get("/vehicles")
+@api.get("/vehicles")
 def list_vehicles(q: str | None = None):
     base_sql = """
         SELECT
@@ -262,7 +268,7 @@ def list_vehicles(q: str | None = None):
 
     return result
 
-@app.post("/vehicles", status_code=201)
+@api.post("/vehicles", status_code=201)
 def create_vehicle(v: VehicleCreateRequest):
     if v.admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
@@ -349,7 +355,7 @@ def _make_document_response(row: Mapping[str, object]) -> dict[str, object]:
     }
 
 
-@app.post("/vehicles/{vehicle_id}/documents", status_code=201)
+@api.post("/vehicles/{vehicle_id}/documents", status_code=201)
 def create_document(vehicle_id: int, payload: DocumentCreateRequest):
     if payload.admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
@@ -461,7 +467,7 @@ def delete_document(document_id: int, admin_password: str = Query(..., descripti
 
     return Response(status_code=204)
 
-@app.get("/expiring")
+@api.get("/expiring")
 def expiring(days: int = Query(30, ge=1, le=365)):
     today = date.today()
     until = today + timedelta(days=days)
@@ -543,7 +549,7 @@ def notify_job():
             )
 
 # DEBUG: manuel test endpoint'i (sadece dev ortamı)
-@app.get("/debug/send_test")
+@api.get("/debug/send_test")
 def debug_send_test(to: EmailStr = Query(..., description="Alıcı e-posta")):
     try:
         html = EMAIL_TEMPLATE.format(
@@ -556,12 +562,12 @@ def debug_send_test(to: EmailStr = Query(..., description="Alıcı e-posta")):
         return {"ok": False, "provider": MAIL_PROVIDER, "error": str(e)}
 
 
-@app.get("/documents/upcoming")
+@api.get("/documents/upcoming")
 def documents_upcoming(days: int = Query(60, ge=1, le=365)):
     return expiring(days)
 
 
-@app.post("/debug/run_notifications")
+@api.post("/debug/run_notifications")
 def debug_run_notifications(admin_password: str = Query(..., description="Bildirim çalıştırma şifresi")):
     if admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
@@ -572,3 +578,8 @@ def debug_run_notifications(admin_password: str = Query(..., description="Bildir
 scheduler = BackgroundScheduler(timezone=os.getenv("TZ","Europe/Istanbul"))
 scheduler.add_job(notify_job, "cron", hour=8, minute=0)
 scheduler.start()
+
+app.include_router(api)
+STATIC_DIR = os.getenv("STATIC_DIR", "/app/webout")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
