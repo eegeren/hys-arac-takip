@@ -1,4 +1,3 @@
-import { apiUrl } from "../lib/api";
 "use client";
 
 import { useEffect, useState } from "react";
@@ -16,22 +15,7 @@ type UpcomingDocument = {
   responsible_email?: string | null;
 };
 
-const DOC_TYPE_LABELS: Record<string, string> = {
-  inspection: "Muayene",
-  muayene: "Muayene",
-  k_document: "K Belgesi",
-  "k belgesi": "K Belgesi",
-  traffic_insurance: "Trafik Sigortası",
-  insurance: "Trafik Sigortası",
-  "trafik sigortası": "Trafik Sigortası",
-  kasko: "Kasko",
-};
-
-const docTypeLabel = (value: string) => {
-  const safe = value ?? "";
-  const key = safe.toLowerCase().replace(/\s+/g, "_");
-  return DOC_TYPE_LABELS[key] ?? safe.replace(/_/g, " ");
-};
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 const statusClass = (status: string) => {
   switch (status) {
@@ -58,7 +42,7 @@ export default function DashboardPage() {
 
     const fetchDocs = async () => {
       try {
-        const res = await fetch(apiUrl("/api/documents/upcoming?days=60"), {
+        const res = await fetch(`${API_BASE}/documents/upcoming?days=60`, {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error("API hatası");
@@ -119,7 +103,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                   <span className="text-sm uppercase tracking-wide text-white/70">Belge Türü</span>
-                  <h3 className="text-xl font-semibold capitalize text-white">{docTypeLabel(doc.doc_type)}</h3>
+                  <h3 className="text-xl font-semibold capitalize text-white">{doc.doc_type.replace(/_/g, " ")}</h3>
                 </div>
                 {doc.valid_from ? (
                   <div className="flex items-center justify-between text-xs text-white/70">
