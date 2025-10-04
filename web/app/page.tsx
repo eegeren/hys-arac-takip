@@ -16,8 +16,6 @@ type UpcomingDocument = {
   responsible_email?: string | null;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? apiUrl("";
-
 const DOC_TYPE_LABELS: Record<string, string> = {
   inspection: "Muayene",
   muayene: "Muayene",
@@ -60,7 +58,7 @@ export default function DashboardPage() {
 
     const fetchDocs = async () => {
       try {
-        const res = await fetch(`${API_BASE}/documents/upcoming?days=60`, {
+        const res = await fetch(apiUrl("/api/documents/upcoming?days=60"), {
           signal: controller.signal,
         });
         if (!res.ok) throw new Error("API hatası");
