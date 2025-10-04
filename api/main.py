@@ -2,6 +2,7 @@ import os, smtplib
 from datetime import date, timedelta, datetime, timezone
 from fastapi import FastAPI, Query, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, EmailStr
 from typing import Mapping
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -10,6 +11,9 @@ from email.mime.multipart import MIMEMultipart
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import IntegrityError
 import httpx
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.requests import Request
+from starlette.responses import FileResponse, JSONResponse
 
 
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -44,6 +48,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Static web (Next.js export) ---
+STATIC_DIR = os.getenv("STATIC_DIR", "/app/webout")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+
+# SPA fallback: /api dışındaki 404'larda index.html döndür
+@app.exception_handler(StarletteHTTPException)
+async def spa_fallback(request: Request, exc: StarletteHTTPException):
+    if exc.status_code == 404 and not request.url.path.startswith("/api"):
+        index_path = os.path.join(STATIC_DIR, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 EMAIL_TEMPLATE = """
 <h3>🚨 Araç Belge Uyarısı</h3>
@@ -594,3 +612,48 @@ def debug_run_notifications(admin_password: str = Query(..., description="Bildir
 scheduler = BackgroundScheduler(timezone=os.getenv("TZ","Europe/Istanbul"))
 scheduler.add_job(notify_job, "cron", hour=8, minute=0)
 scheduler.start()
+
+# --- API aliases under /api (backward compatible) ---
+@app.get("/api/healthz")
+def health_api():
+    return health()
+
+@app.get("/api/vehicles")
+def list_vehicles_api(q: str | None = None):
+    return list_vehicles(q)
+
+@app.post("/api/vehicles", status_code=201)
+def create_vehicle_api(v: VehicleCreateRequest):
+    return create_vehicle(v)
+
+@app.delete("/api/vehicles/{vehicle_id}", status_code=204)
+def delete_vehicle_api(vehicle_id: int, admin_password: str = Query(..., description="Araç silme şifresi")):
+    return delete_vehicle(vehicle_id, admin_password)
+
+@app.post("/api/vehicles/{vehicle_id}/documents", status_code=201)
+def create_document_api(vehicle_id: int, payload: DocumentCreateRequest):
+    return create_document(vehicle_id, payload)
+
+@app.post("/api/documents", status_code=201)
+def create_document_with_body_api(body: DocumentCreateWithVehicle):
+    return create_document_with_body(body)
+
+@app.delete("/api/documents/{document_id}", status_code=204)
+def delete_document_api(document_id: int, admin_password: str = Query(..., description="Belge silme şifresi")):
+    return delete_document(document_id, admin_password)
+
+@app.get("/api/expiring")
+def expiring_api(days: int = Query(30, ge=1, le=365)):
+    return expiring(days)
+
+@app.get("/api/documents/upcoming")
+def documents_upcoming_api(days: int = Query(60, ge=1, le=365)):
+    return documents_upcoming(days)
+
+@app.post("/api/debug/run_notifications")
+def debug_run_notifications_api(admin_password: str = Query(..., description="Bildirim çalıştırma şifresi")):
+    return debug_run_notifications(admin_password)
+
+@app.get("/api/debug/send_test")
+def debug_send_test_api(to: EmailStr = Query(..., description="Alıcı e-posta")):
+    return debug_send_test(to)
