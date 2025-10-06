@@ -82,19 +82,87 @@ def now_local():
 def today_local():
     return now_local().date()
 
-# Helper for days left
 def days_left_for(d: date | None) -> int | None:
     if d is None:
         return None
     return (d - today_local()).days
 
-EMAIL_TEMPLATE = """
-<h3>🚨 Araç Belge Uyarısı</h3>
-<p><b>Plaka:</b> {plate}<br/>
-<b>Belge:</b> {doc_type}<br/>
-<b>Bitiş Tarihi:</b> {valid_to} ({days_left} gün kaldı)</p>
-<a href="{panel_url}">Web panelde görüntüle</a>
-"""
+EMAIL_TEMPLATE = None  # kept for backward-compatibility; use render_email instead
+
+DOC_TURKISH_LABELS = {
+    "inspection": "Muayene",
+    "k_document": "K Belgesi",
+    "traffic_insurance": "Trafik Sigortası",
+    "kasko": "Kasko",
+}
+
+def tr_doc_label(code: str) -> str:
+    """Belge türünü Türkçe etikete çevirir."""
+    if not code:
+        return "Belge"
+    return DOC_TURKISH_LABELS.get(str(code).lower().strip(), str(code))
+
+
+def render_email(
+    *,
+    plate: str,
+    doc_type: str,
+    valid_to: date | str | None,
+    days_left: int | str | None,
+    panel_url: str,
+    valid_from: date | str | None = None,
+    note: str | None = None,
+    make: str | None = None,
+    model: str | None = None,
+    year: int | None = None,
+) -> str:
+    """Şık, bilgili bir HTML e‑posta gövdesi üretir."""
+    # Normalize dates to strings (YYYY-MM-DD)
+    def _d(v):
+        if v is None:
+            return "-"
+        if isinstance(v, (datetime, date)):
+            return v.strftime("%Y-%m-%d")
+        return str(v)
+
+    days_text = f"{days_left} gün kaldı" if isinstance(days_left, int) else str(days_left or "-")
+    title_type = tr_doc_label(doc_type)
+
+    vehicle_line = " ".join(x for x in [make, model, str(year) if year else None] if x)
+
+    return f"""
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;background:#0b1220;color:#e6eef4;padding:24px;">
+      <div style="max-width:640px;margin:0 auto;background:#0f172a;border:1px solid #1f2a44;border-radius:12px;padding:24px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <span style="font-size:22px">🔔</span>
+          <h2 style="margin:0;font-size:20px;color:#fff;">Araç Belge Uyarısı</h2>
+        </div>
+        <table style="width:100%;border-collapse:collapse;font-size:14px;color:#e6eef4;">
+          <tr>
+            <td style="padding:8px 0;color:#93a4b9;width:160px;">Plaka</td>
+            <td style="padding:8px 0;font-weight:600;color:#fff;">{plate}</td>
+          </tr>
+          {f'<tr><td style="padding:8px 0;color:#93a4b9;">Araç</td><td style="padding:8px 0;">{vehicle_line}</td></tr>' if vehicle_line else ''}
+          <tr>
+            <td style="padding:8px 0;color:#93a4b9;">Belge</td>
+            <td style="padding:8px 0;">{title_type}</td>
+          </tr>
+          {f'<tr><td style="padding:8px 0;color:#93a4b9;">Başlangıç</td><td style="padding:8px 0;">{_d(valid_from)}</td></tr>' if valid_from else ''}
+          <tr>
+            <td style="padding:8px 0;color:#93a4b9;">Bitiş Tarihi</td>
+            <td style="padding:8px 0;">{_d(valid_to)} <span style=\"background:#0ea5e9;color:#001825;border-radius:999px;padding:2px 8px;margin-left:6px;\">{days_text}</span></td>
+          </tr>
+          {f'<tr><td style="padding:8px 0;color:#93a4b9;">Not</td><td style="padding:8px 0;white-space:pre-wrap;">{note}</td></tr>' if note else ''}
+        </table>
+
+        <div style="margin-top:20px;text-align:center;">
+          <a href="{panel_url}" style="background:#22c55e;color:#00140a;text-decoration:none;padding:10px 16px;border-radius:10px;font-weight:600;display:inline-block">Web panelde görüntüle</a>
+        </div>
+
+        <p style="margin-top:16px;color:#93a4b9;font-size:12px;">Bu e‑posta otomatik olarak gönderildi. Yanıtlamanıza gerek yoktur.</p>
+      </div>
+    </div>
+    """
 
 
 def _document_status(valid_to: date | None) -> str:
@@ -351,12 +419,12 @@ def create_vehicle(v: VehicleCreateRequest):
         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
     }
 
-    mail_body = EMAIL_TEMPLATE.format(
+    mail_body = render_email(
         plate=row["plate"],
         doc_type="Yeni Araç Kaydı",
-        valid_to=datetime.now().strftime("%Y-%m-%d"),
+        valid_to=datetime.now().date(),
         days_left=0,
-        panel_url=f"{PANEL_URL}/vehicles"
+        panel_url=f"{PANEL_URL}/vehicles",
     )
     try:
         send_mail(vehicle_data.get('responsible_email') or MAIL_TO, f"Yeni Araç Eklendi: {row['plate']}", mail_body)
@@ -381,7 +449,13 @@ def delete_vehicle(vehicle_id: int, admin_password: str = Query(..., description
             raise HTTPException(status_code=404, detail="Araç bulunamadı")
 
     summary = f"{deleted['plate']}" if deleted else str(vehicle_id)
-    mail_body = f"<p>{summary} plakalı araç sistemden silindi.</p><p>Detaylar için panel: <a href='{PANEL_URL}/vehicles'>{PANEL_URL}/vehicles</a></p>"
+    mail_body = render_email(
+        plate=summary,
+        doc_type="Araç Silme",
+        valid_to=today_local(),
+        days_left="-",
+        panel_url=f"{PANEL_URL}/vehicles",
+    )
     try:
         send_mail(MAIL_TO, f"Araç Silindi: {summary}", mail_body)
     except Exception as exc:
@@ -415,7 +489,7 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
 
     with engine.begin() as con:
         vehicle = con.execute(
-            text("SELECT plate, responsible_email FROM vehicles WHERE id = :id"), {"id": vehicle_id}
+            text("SELECT plate, make, model, year, responsible_email FROM vehicles WHERE id = :id"), {"id": vehicle_id}
         ).mappings().first()
         if vehicle is None:
             raise HTTPException(status_code=404, detail="Araç bulunamadı")
@@ -435,17 +509,22 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
 
     days_left = days_left_for(payload.valid_to)
 
-    mail_html = EMAIL_TEMPLATE.format(
+    mail_html = render_email(
         plate=vehicle["plate"],
         doc_type=normal_type,
-        valid_to=payload.valid_to.strftime("%Y-%m-%d"),
+        valid_to=payload.valid_to,
         days_left=days_left if days_left is not None else "-",
-        panel_url=f"{PANEL_URL}/vehicles?plate={vehicle['plate']}"
+        panel_url=f"{PANEL_URL}/vehicles?plate={vehicle['plate']}",
+        valid_from=payload.valid_from,
+        note=payload.note,
+        make=vehicle.get("make"),
+        model=vehicle.get("model"),
+        year=vehicle.get("year"),
     )
 
     # Bilgi maili
     try:
-        send_mail(vehicle.get("responsible_email") or MAIL_TO, f"Belge Eklendi: {vehicle['plate']} - {normal_type}", mail_html)
+        send_mail(vehicle.get("responsible_email") or MAIL_TO, f"Belge Eklendi: {vehicle['plate']} - {tr_doc_label(normal_type)}", mail_html)
     except Exception as exc:
         print(f"Belge ekleme maili gönderilemedi: {exc}")
 
@@ -454,13 +533,18 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
         try:
             send_mail(
                 vehicle.get("responsible_email") or MAIL_TO,
-                f"Araç Belge Uyarısı: {vehicle['plate']} - {normal_type} ({days_left}g)",
-                EMAIL_TEMPLATE.format(
+                f"Araç Belge Uyarısı: {vehicle['plate']} - {tr_doc_label(normal_type)} ({days_left}g)",
+                render_email(
                     plate=vehicle["plate"],
                     doc_type=normal_type,
-                    valid_to=payload.valid_to.strftime("%Y-%m-%d"),
+                    valid_to=payload.valid_to,
                     days_left=days_left,
-                    panel_url=f"{PANEL_URL}/vehicles?plate={vehicle['plate']}"
+                    panel_url=f"{PANEL_URL}/vehicles?plate={vehicle['plate']}",
+                    valid_from=payload.valid_from,
+                    note=payload.note,
+                    make=vehicle.get("make"),
+                    model=vehicle.get("model"),
+                    year=vehicle.get("year"),
                 ),
             )
             with engine.begin() as con:
@@ -589,7 +673,7 @@ def notify_job(vehicle_id: int | None = None):
             if not r["responsible_email"]:
                 continue
             try:
-                html = EMAIL_TEMPLATE.format(
+                html = render_email(
                     plate=r["plate"],
                     doc_type=r["doc_type"],
                     valid_to=r["valid_to"],
@@ -598,7 +682,7 @@ def notify_job(vehicle_id: int | None = None):
                 )
                 send_mail(
                     r["responsible_email"],
-                    f"Araç Belge Uyarısı: {r['plate']} - {r['doc_type']} ({r['days_left']}g)",
+                    f"Araç Belge Uyarısı: {r['plate']} - {tr_doc_label(r['doc_type'])} ({r['days_left']}g)",
                     html,
                 )
                 con.execute(
@@ -620,9 +704,12 @@ def notify_job(vehicle_id: int | None = None):
 
 def debug_send_test(to: str = Query(..., description="Alıcı e-posta")):
     try:
-        html = EMAIL_TEMPLATE.format(
-            plate="TEST-PLAKA", doc_type="inspection", valid_to=str(date.today()+timedelta(days=5)),
-            days_left=5, panel_url=PANEL_URL + "/vehicles"
+        html = render_email(
+            plate="TEST-PLAKA",
+            doc_type="inspection",
+            valid_to=date.today() + timedelta(days=5),
+            days_left=5,
+            panel_url=PANEL_URL + "/vehicles",
         )
         res = send_mail(str(to), "Test HYS - Resend Mail", html)
         return {"ok": True, "provider": MAIL_PROVIDER, "result": str(res)}
