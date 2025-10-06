@@ -19,7 +19,7 @@ from starlette.responses import FileResponse, JSONResponse
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 MAIL_PROVIDER = os.getenv("MAIL_PROVIDER", "RESEND").upper()  # RESEND | SMTP
-MAIL_FROM = os.getenv("MAIL_FROM", "bildirim@hys.local")
+MAIL_FROM = os.getenv("MAIL_FROM", "onboarding@resend.dev")  # Resend sandbox default
 MAIL_TO = os.getenv("MAIL_TO", "aractakip@hysavm.com")
 
 # SMTP config (fallback veya istenirse birincil)
@@ -32,16 +32,17 @@ SMTP_PASS = os.getenv("SMTP_PASS","")
 # Resend config
 RESEND_API_KEY = os.getenv("RESEND_API_KEY","").strip()
 RESEND_BASE_URL = os.getenv("RESEND_BASE_URL","https://api.resend.com")
+RESEND_TEST_TO = os.getenv("RESEND_TEST_TO","").strip()  # If set, force all Resend mails to go to this address (sandbox)
 
 THRESHOLDS = [int(x) for x in os.getenv("NOTIFY_THRESHOLDS_DAYS","30,15,10,7,1").split(",")]
 ALLOWED_DOC_TYPES = {"k_document", "traffic_insurance", "kasko", "inspection"}
-PANEL_URL = os.getenv("PANEL_URL","http://localhost:3000")
+PANEL_URL = os.getenv("PANEL_URL","https://hys-arac-takip-1.onrender.com")
 VEHICLE_ADMIN_PASSWORD = os.getenv("VEHICLE_ADMIN_PASSWORD", "hys123")
 
 engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
 app = FastAPI(title="HYS Fleet API", version="1.1.0")
 
-allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(",")
+allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "https://hys-arac-takip-1.onrender.com").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in allow_origins if origin.strip()] or ["*"],
@@ -76,23 +77,13 @@ def now_local():
 def today_local():
     return now_local().date()
 
-EMAIL_TEMPLATE = """
-# --- Time helpers (use app TZ instead of container default) ---
-def _tz():
-    try:
-        return ZoneInfo(os.getenv("TZ", "Europe/Istanbul"))
-    except Exception:
-        return timezone.utc
-
-def today_local() -> date:
-    # Always compute "today" based on configured TZ to avoid off-by-one issues
-    return datetime.now(timezone.utc).astimezone(_tz()).date()
-
+# Helper for days left
 def days_left_for(d: date | None) -> int | None:
     if d is None:
         return None
     return (d - today_local()).days
 
+EMAIL_TEMPLATE = """
 <h3>🚨 Araç Belge Uyarısı</h3>
 <p><b>Plaka:</b> {plate}<br/>
 <b>Belge:</b> {doc_type}<br/>
@@ -145,13 +136,14 @@ def send_via_resend(to_email: str, subject: str, html_body: str):
         "Authorization": f"Bearer {RESEND_API_KEY}",
         "Content-Type": "application/json",
     }
-    target = to_email or MAIL_TO
+    # In Resend sandbox, override recipient if RESEND_TEST_TO is set
+    target_final = RESEND_TEST_TO or (to_email or MAIL_TO)
     payload = {
         "from": MAIL_FROM,
-        "to": [target],
-        **({"bcc": [MAIL_TO]} if MAIL_TO else {}),
+        "to": [target_final],
+        **({"bcc": [MAIL_TO]} if (MAIL_TO and not RESEND_TEST_TO) else {}),
         "subject": subject,
-        "html": html_body
+        "html": html_body,
     }
     with httpx.Client(base_url=RESEND_BASE_URL, timeout=20) as client:
         r = client.post("/emails", headers=headers, json=payload)
@@ -159,6 +151,9 @@ def send_via_resend(to_email: str, subject: str, html_body: str):
         return r.json()
 
 def send_mail(to_email: str, subject: str, html_body: str):
+    # Standardize subject prefix for routing rules
+    if not subject.startswith("[HYS Araç Uyarı]"):
+        subject = f"[HYS Araç Uyarı] {subject}"
     provider = MAIL_PROVIDER
     try:
         if provider == "RESEND":
@@ -569,7 +564,7 @@ def expiring(days: int = Query(30, ge=1, le=365)):
         )
     return result
 
-def notify_job():
+def notify_job(vehicle_id: int | None = None):
     today = today_local()
     with engine.begin() as con:
         sql = """
@@ -579,6 +574,7 @@ def notify_job():
             from documents d
             join vehicles v on v.id=d.vehicle_id
             where d.valid_to >= :today
+              and (:vid is null or v.id = :vid)
           )
           select * from due where days_left = any(:thresholds)
           and not exists (
@@ -587,7 +583,7 @@ def notify_job():
           )
           order by valid_to
         """
-        rows = con.execute(text(sql), {"today": today, "thresholds": THRESHOLDS}).mappings().all()
+        rows = con.execute(text(sql), {"today": today, "thresholds": THRESHOLDS, "vid": vehicle_id}).mappings().all()
 
         for r in rows:
             if not r["responsible_email"]:
@@ -641,11 +637,14 @@ def documents_upcoming(days: int = Query(60, ge=1, le=365)):
 
 
 @app.post("/debug/run_notifications")
-def debug_run_notifications(admin_password: str = Query(..., description="Bildirim çalıştırma şifresi")):
+def debug_run_notifications(
+    admin_password: str = Query(..., description="Bildirim çalıştırma şifresi"),
+    vehicle_id: int | None = Query(None, description="Sadece bu araç için tetikle (opsiyonel)"),
+):
     if admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
     try:
-        notify_job()
+        notify_job(vehicle_id)
         return {"ok": True, "ran": True}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -701,8 +700,11 @@ def documents_upcoming_api(days: int = Query(60, ge=1, le=365)):
     return documents_upcoming(days)
 
 @app.post("/api/debug/run_notifications")
-def debug_run_notifications_api(admin_password: str = Query(..., description="Bildirim çalıştırma şifresi")):
-    return debug_run_notifications(admin_password)
+def debug_run_notifications_api(
+    admin_password: str = Query(..., description="Bildirim çalıştırma şifresi"),
+    vehicle_id: int | None = Query(None, description="Sadece bu araç için tetikle (opsiyonel)"),
+):
+    return debug_run_notifications(admin_password, vehicle_id)
 
 @app.get("/api/debug/send_test")
 def debug_send_test_api(to: str = Query(..., description="Alıcı e-posta")):
