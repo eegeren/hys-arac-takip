@@ -4,6 +4,29 @@ import { apiUrl } from "../lib/api";
 import { useEffect, useState } from "react";
 import React from "react";
 
+// Basit etiket dönüştürücü (TR)
+const DOC_LABELS: Record<string, string> = {
+  inspection: "Muayene",
+  muayene: "Muayene",
+  k_document: "K Belgesi",
+  k: "K Belgesi",
+  k_belgesi: "K Belgesi",
+  traffic_insurance: "Trafik Sigortası",
+  insurance: "Trafik Sigortası",
+  trafik_sigortası: "Trafik Sigortası",
+  kasko: "Kasko",
+};
+const docTypeLabel = (v: string) => DOC_LABELS[(v || "").toLowerCase().replace(/\s+/g, "_")] || v?.replace(/_/g, " ") || "-";
+
+// Küçük rozet bileşeni
+function Badge({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return (
+    <span className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-medium ${className}`}>
+      {children}
+    </span>
+  );
+}
+
 type UpcomingDocument = {
   id: number;
   doc_id: number;
@@ -39,15 +62,15 @@ type Vehicle = {
 const statusClass = (status: string) => {
   switch (status) {
     case "critical":
-      return "bg-rose-600/80 border-rose-300/60";
+      return "bg-gradient-to-br from-rose-700/80 to-rose-600/70 border-rose-300/60 ring-1 ring-rose-200/30";
     case "warning":
-      return "bg-amber-600/80 border-amber-300/60";
+      return "bg-gradient-to-br from-amber-700/70 to-amber-600/70 border-amber-300/60 ring-1 ring-amber-200/30";
     case "ok":
-      return "bg-emerald-600/80 border-emerald-300/60";
+      return "bg-gradient-to-br from-emerald-700/70 to-emerald-600/70 border-emerald-300/60 ring-1 ring-emerald-200/30";
     case "expired":
-      return "bg-rose-900/80 border-rose-400/60";
+      return "bg-gradient-to-br from-rose-900/80 to-rose-800/70 border-rose-400/60 ring-1 ring-rose-300/20";
     default:
-      return "bg-slate-800/80 border-slate-600/60";
+      return "bg-slate-800/80 border-slate-600/60 ring-1 ring-white/5";
   }
 };
 
@@ -131,12 +154,12 @@ export default function DashboardPage() {
     <section className="space-y-6 px-3 sm:px-4 md:px-6 max-w-7xl mx-auto">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-xl sm:text-2xl font-semibold">Belge Takip Panosu</h2>
+          <h2 className="text-2xl sm:text-3xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-300">Belge Takip Panosu</h2>
           <p className="text-sm text-slate-400">Önümüzdeki 60 gün içinde süresi dolacak belgeler</p>
         </div>
-        <span className="self-start sm:self-auto rounded bg-slate-800 px-3 py-1 text-xs sm:text-sm text-slate-300">
+        <Badge className="self-start sm:self-auto border-slate-600/60 bg-slate-800/70 text-slate-200">
           {loading ? "Yükleniyor..." : `${docs.length} belge`}
-        </span>
+        </Badge>
       </div>
 
       {error ? (
@@ -146,45 +169,48 @@ export default function DashboardPage() {
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
-        {docs.length === 0 && !loading ? (
-          <p className="rounded-lg border border-slate-700 bg-slate-800/70 p-4 text-slate-300">
+        {loading ? (
+          Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="rounded-xl border border-slate-700 bg-slate-800/60 p-4 sm:p-5 animate-pulse">
+              <div className="h-4 w-24 bg-slate-700/70 rounded" />
+              <div className="mt-3 h-6 w-40 bg-slate-700/70 rounded" />
+              <div className="mt-4 h-3 w-full bg-slate-700/70 rounded" />
+              <div className="mt-2 h-3 w-1/2 bg-slate-700/70 rounded" />
+            </div>
+          ))
+        ) : docs.length === 0 ? (
+          <p className="col-span-full rounded-xl border border-slate-700 bg-slate-800/70 p-6 text-center text-slate-300">
             Önümüzdeki 60 gün içinde süresi dolacak belge bulunmuyor.
           </p>
         ) : (
           docs.map((doc) => (
             <article
               key={doc.id ?? doc.doc_id}
-              className={`rounded-xl border shadow-lg shadow-slate-900/40 transition hover:-translate-y-1 hover:shadow-slate-800/60 focus-within:ring-1 ring-white/10 ${statusClass(doc.status)} `}
+              className={`group rounded-xl border shadow-lg shadow-slate-900/40 transition hover:-translate-y-1 hover:shadow-slate-800/60 focus-within:ring-2 ring-white/10 ${statusClass(doc.status)}`}
             >
-              <div className="space-y-2.5 p-4 sm:p-5">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm uppercase tracking-wide text-white/70">Plaka</span>
-                  <span className="text-base sm:text-lg font-semibold text-white break-words">{doc.plate}</span>
+              <div className="p-4 sm:p-5">
+                <div className="flex items-center justify-between gap-3">
+                  <Badge className="border-white/20 bg-black/10 text-white/90">{doc.plate}</Badge>
+                  <Badge className="border-white/20 bg-black/10 text-white/90">{formatDaysLabel(doc.days_left)}</Badge>
                 </div>
-                <div>
-                  <span className="text-sm uppercase tracking-wide text-white/70">Belge Türü</span>
-                  <h3 className="text-lg sm:text-xl font-semibold capitalize text-white break-words">{doc.doc_type.replace(/_/g, " ")}</h3>
-                </div>
-                {doc.valid_from ? (
-                  <div className="flex items-center justify-between text-xs text-white/70">
-                    <span>Geçerlilik Başlangıcı</span>
-                    <span>{new Date(doc.valid_from).toLocaleDateString("tr-TR")}</span>
+                <h3 className="mt-3 text-lg sm:text-xl font-semibold text-white capitalize break-words">{docTypeLabel(doc.doc_type)}</h3>
+                <div className="mt-2 grid grid-cols-2 gap-3 text-xs sm:text-sm text-white/85">
+                  {doc.valid_from ? (
+                    <div className="flex items-center justify-between">
+                      <span className="text-white/70">Başlangıç</span>
+                      <span>{new Date(doc.valid_from).toLocaleDateString("tr-TR")}</span>
+                    </div>
+                  ) : (
+                    <div />
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-white/70">Bitiş</span>
+                    <span>{new Date(doc.valid_to).toLocaleDateString("tr-TR")}</span>
                   </div>
-                ) : null}
-                <div className="flex items-center justify-between text-sm sm:text-base text-white/80">
-                  <span>Bitiş Tarihi</span>
-                  <span>{new Date(doc.valid_to).toLocaleDateString("tr-TR")}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm sm:text-base font-medium text-white">
-                  <span>Kalan Gün</span>
-                  <span>{doc.days_left ?? "-"}</span>
                 </div>
                 {doc.note ? (
-                  <p className="text-xs sm:text-sm text-white/70 break-words">Not: {doc.note}</p>
+                  <p className="mt-2 text-xs sm:text-sm text-white/80 break-words">Not: {doc.note}</p>
                 ) : null}
-                <div className="text-xs sm:text-sm text-white/70 break-all">
-                  Sorumlu: {doc.responsible_email ?? "Tanımlı değil"}
-                </div>
               </div>
             </article>
           ))
@@ -193,10 +219,10 @@ export default function DashboardPage() {
 
       <div className="pt-10">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-          <h2 className="text-xl sm:text-2xl font-semibold">Araçlar</h2>
-          <span className="self-start sm:self-auto rounded bg-slate-800 px-3 py-1 text-xs sm:text-sm text-slate-300">
+          <h2 className="text-2xl sm:text-3xl font-semibold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-300">Araçlar</h2>
+          <Badge className="self-start sm:self-auto border-slate-600/60 bg-slate-800/70 text-slate-200">
             {loading ? "Yükleniyor..." : `${vehicles.length} araç`}
-          </span>
+          </Badge>
         </div>
 
         {vehicles.length === 0 && !loading ? (
@@ -215,17 +241,16 @@ export default function DashboardPage() {
                 onKeyDown={(e) => { if (e.key === "Enter") openVehicleDetails(vehicle); }}
               >
                 <div className="space-y-2.5 p-4 sm:p-5 text-white">
-                  <div className="text-lg sm:text-xl font-semibold break-words">{vehicle.plate}</div>
+                  <div className="flex items-center justify-between">
+                    <div className="text-lg sm:text-xl font-semibold break-words">{vehicle.plate}</div>
+                    <Badge className="border-white/15 bg-black/10 text-white/90">{vehicle.document_count} belge</Badge>
+                  </div>
                   {(vehicle.make || vehicle.model || vehicle.year) && (
                     <div className="text-sm sm:text-base text-white/70 capitalize break-words">
                       {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(" ")}
                     </div>
                   )}
                   <div className="flex items-center justify-between text-xs sm:text-sm text-white/70 pt-2">
-                    <span>Belge Sayısı</span>
-                    <span>{vehicle.document_count}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-xs sm:text-sm text-white/70">
                     <span>Kayıt Tarihi</span>
                     <span>{new Date(vehicle.created_at).toLocaleDateString("tr-TR")}</span>
                   </div>
@@ -243,7 +268,7 @@ export default function DashboardPage() {
             className="absolute inset-0 bg-black/60"
             onClick={() => { setDetailOpen(false); setSelectedVehicle(null); }}
           />
-          <div className="relative z-10 w-full sm:max-w-2xl max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-700 bg-slate-900 p-4 sm:p-6 mx-auto">
+          <div className="relative z-10 w-full sm:max-w-2xl max-h-[85vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl border border-slate-700 bg-gradient-to-b from-slate-900 to-slate-950 p-4 sm:p-6 mx-auto shadow-xl shadow-black/40">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h3 className="text-lg sm:text-xl font-semibold text-white">
@@ -294,7 +319,7 @@ export default function DashboardPage() {
                       >
                         <div className="flex items-center justify-between">
                           <div className="text-sm font-semibold capitalize text-white">
-                            {doc.doc_type.replace(/_/g, " ")}
+                            {docTypeLabel(doc.doc_type)}
                           </div>
                           <div className="text-xs text-white/80">{formatDaysLabel(doc.days_left)}</div>
                         </div>
