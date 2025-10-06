@@ -1,10 +1,11 @@
 services:
   db:
     image: postgres:16
+    env_file: .env
     environment:
-      POSTGRES_DB: hys_fleet
-      POSTGRES_USER: hys
-      POSTGRES_PASSWORD: hys_pass
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
       TZ: Europe/Istanbul
     ports: ["5432:5432"]
     volumes:
@@ -13,20 +14,19 @@ services:
 
   api:
     build: ./api
+    env_file: .env
     environment:
-      DATABASE_URL: postgresql+psycopg2://hys:hys_pass@db:5432/hys_fleet
-      SMTP_HOST: ""
-      SMTP_PORT: ""
-      SMTP_USER: ""
-      SMTP_PASS: ""
-      MAIL_FROM: bildirim@hys.local
-      MAIL_TO: aractakip@hysavm.com
-      MAIL_PROVIDER: RESEND
-      RESEND_API_KEY: re_6rs5zBCs_LaMEQkAQx8rPxGTPsBXKmfmJ
-      VEHICLE_ADMIN_PASSWORD: hys123
-      NOTIFY_THRESHOLDS_DAYS: "30,15,10,7,1"
-      TZ: Europe/Istanbul
-      PANEL_URL: http://localhost:3000
+      DATABASE_URL: postgresql+psycopg2://${DB_USER}:${DB_PASS}@db:5432/${DB_NAME}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      MAIL_FROM: ${MAIL_FROM}
+      MAIL_PROVIDER: ${MAIL_PROVIDER}
+      RESEND_API_KEY: ${RESEND_API_KEY}
+      NOTIFY_THRESHOLDS_DAYS: ${NOTIFY_THRESHOLDS_DAYS}
+      TZ: ${TZ}
+      PANEL_URL: ${PANEL_URL}
     depends_on: [db]
     ports: ["8000:8000"]
 
@@ -36,6 +36,10 @@ services:
       NEXT_PUBLIC_API_URL: http://localhost:8000
     depends_on: [api]
     ports: ["3000:3000"]
+
+  mailhog:
+    image: mailhog/mailhog
+    ports: ["8025:8025"] # http://localhost:8025
 
 volumes:
   dbdata:
