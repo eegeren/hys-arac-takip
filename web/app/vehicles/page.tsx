@@ -1,3 +1,4 @@
+
 "use client";
 import { apiUrl } from "../../lib/api";
 
@@ -36,7 +37,6 @@ type Vehicle = {
   make?: string | null;
   model?: string | null;
   year?: number | null;
-  responsible_email?: string | null;
   created_at?: string | null;
   document_count: number;
   next_valid_to?: string | null;
@@ -69,16 +69,13 @@ type VehicleFormState = {
   make: string;
   model: string;
   year: string;
-  responsible_email: string;
 };
-
 
 const initialFormState: VehicleFormState = {
   plate: "",
   make: "",
   model: "",
   year: "",
-  responsible_email: "",
 };
 
 const statusClass = (status: string | null | undefined, fallback = "bg-slate-900 border-slate-700") => {
@@ -264,7 +261,6 @@ export default function VehiclesPage() {
       make: formState.make.trim() || null,
       model: formState.model.trim() || null,
       year: formState.year ? Number(formState.year) : null,
-      responsible_email: formState.responsible_email.trim() || null,
       admin_password: adminPassword,
     };
     if (!adminPassword.trim()) {
@@ -275,7 +271,7 @@ export default function VehiclesPage() {
       setFormError("Yıl bilgisi sayısal olmalı");
       return;
     }
-  
+
     try {
       setFormSubmitting(true);
       const res = await fetch(apiUrl("/api/vehicles"), {
@@ -340,7 +336,7 @@ export default function VehiclesPage() {
       setDocError("Bitiş tarihi zorunlu");
       return;
     }
-  
+
     const payload = {
       vehicle_id: selectedVehicleId,
       doc_type: docForm.doc_type.trim() || DOCUMENT_TYPES[0].value,
@@ -349,7 +345,7 @@ export default function VehiclesPage() {
       note: docForm.note.trim() || null,
       admin_password: adminPassword,
     };
-  
+
     try {
       setDocSubmitting(true);
       const res = await fetch(apiUrl("/api/documents"), {
@@ -381,7 +377,7 @@ export default function VehiclesPage() {
     if (!confirm("Belgeyi silmek istediğinize emin misiniz?")) return;
     setDocDeleteBusyId(documentId);
     try {
-          const res = await fetch(
+      const res = await fetch(
         apiUrl(`/api/documents/${documentId}?admin_password=${encodeURIComponent(adminPassword)}`),
         { method: "DELETE" }
       );
@@ -418,7 +414,6 @@ export default function VehiclesPage() {
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
           <h3 className="text-lg font-semibold text-white">Yeni Araç Ekle</h3>
           <p className="mb-4 text-sm text-slate-400">
-            Bildirim e-postası gönderebilmek için sorumlu kişiyi isteğe bağlı olarak tanımlayabilirsiniz.
             Silme veya belge işlemleri için sağ üstteki şifre alanını kullanın.
           </p>
           <form className="space-y-4" onSubmit={handleAddVehicle}>
@@ -459,16 +454,6 @@ export default function VehiclesPage() {
                   className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-slate-500 focus:outline-none"
                   placeholder="2024"
                   inputMode="numeric"
-                />
-              </label>
-              <label className="md:col-span-2 text-sm text-slate-300">
-                Sorumlu E-posta
-                <input
-                  value={formState.responsible_email}
-                  onChange={(e) => handleFormChange("responsible_email", e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-slate-500 focus:outline-none"
-                  placeholder="sorumlu@hys.local"
-                  type="email"
                 />
               </label>
             </div>
@@ -669,7 +654,6 @@ export default function VehiclesPage() {
                 <th className="px-4 py-3 text-left">Plaka</th>
                 <th className="px-4 py-3 text-left">Marka/Model</th>
                 <th className="px-4 py-3 text-left">Belge Durumu</th>
-                <th className="px-4 py-3 text-left">Sorumlu</th>
                 <th className="px-4 py-3 text-left">Eklenme</th>
                 <th className="px-4 py-3 text-right">İşlemler</th>
               </tr>
@@ -677,13 +661,13 @@ export default function VehiclesPage() {
             <tbody className="divide-y divide-slate-800">
               {vehiclesLoading ? (
                 <tr>
-                  <td className="px-4 py-4 text-center text-slate-400" colSpan={6}>
+                  <td className="px-4 py-4 text-center text-slate-400" colSpan={5}>
                     Araçlar yükleniyor...
                   </td>
                 </tr>
               ) : filteredVehicles.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-center text-slate-400" colSpan={6}>
+                  <td className="px-4 py-4 text-center text-slate-400" colSpan={5}>
                     Sonuç bulunamadı.
                   </td>
                 </tr>
@@ -755,18 +739,6 @@ export default function VehiclesPage() {
                           ))}
                         </div>
                       ) : null}
-                    </td>
-                    <td className="px-4 py-4 text-sm">
-                      {vehicle.responsible_email ? (
-                        <a
-                          href={`mailto:${vehicle.responsible_email}`}
-                          className="text-emerald-300 hover:underline"
-                        >
-                          {vehicle.responsible_email}
-                        </a>
-                      ) : (
-                        <span className="text-slate-500">Tanımlı değil</span>
-                      )}
                     </td>
                     <td className="px-4 py-4 text-sm text-slate-300">
                       {vehicle.created_at
