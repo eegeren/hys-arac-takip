@@ -40,7 +40,7 @@ THRESHOLDS = [
     .split(",")
     if x.strip() != ""
 ]
-ALLOWED_DOC_TYPES = {"muayene", "k_belgesi", "trafik_sigortası", "kasko"}
+ALLOWED_DOC_TYPES = {"inspection", "k_document", "traffic_insurance", "kasko"}
 PANEL_URL = os.getenv("PANEL_URL","https://hys-arac-takip-1.onrender.com")
 VEHICLE_ADMIN_PASSWORD = os.getenv("VEHICLE_ADMIN_PASSWORD", "hys123")
 
@@ -226,6 +226,17 @@ class DocumentResponse(BaseModel):
 def health():
     return {"ok": True, "time": datetime.now().isoformat(), "mail_provider": MAIL_PROVIDER}
 
+# Extra health aliases for uptime monitors
+@app.get("/health")
+def health_root():
+    """Alias of /healthz for providers expecting /health."""
+    return health()
+
+@app.get("/api/health")
+def api_health_alias():
+    """Alias of /api/healthz for convenience."""
+    return health()
+
 # ---- Core functions (no direct non-/api routes) ----
 
 def list_vehicles(q: str | None = None):
@@ -396,7 +407,7 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
 
     normal_type = payload.normalized_doc_type
     if normal_type not in ALLOWED_DOC_TYPES:
-        raise HTTPException(status_code=400, detail="Belge türü yalnızca k_document, traffic_insurance, kasko veya inspection olabilir")
+        raise HTTPException(status_code=400, detail="Belge türü yalnızca inspection, k_document, traffic_insurance veya kasko olabilir")
 
     doc_data = payload.model_dump(exclude={"admin_password"})
     doc_data["vehicle_id"] = vehicle_id
@@ -637,6 +648,22 @@ if os.getenv("ENABLE_SCHEDULER", "1") == "1":
     scheduler = BackgroundScheduler(timezone=os.getenv("TZ", "Europe/Istanbul"))
     scheduler.add_job(notify_job, "cron", hour=8, minute=0)
     scheduler.start()
+
+# --- Explicit SPA routes for non-/api paths ---
+@app.get("/")
+def spa_root():
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return JSONResponse({"detail": "Uygulama derlenmiş statik dosyayı bulamadı."}, status_code=404)
+
+@app.get("/vehicles")
+@app.get("/vehicles/{rest:path}")
+def spa_vehicles(rest: str = ""):
+    index_path = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path)
+    return JSONResponse({"detail": "Uygulama derlenmiş statik dosyayı bulamadı."}, status_code=404)
 
 # --- API aliases under /api (backward compatible) ---
 @app.get("/api/healthz")
