@@ -660,9 +660,14 @@ def spa_root():
 @app.get("/vehicles")
 @app.get("/vehicles/{rest:path}")
 def spa_vehicles(rest: str = ""):
-    index_path = os.path.join(STATIC_DIR, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
+    # Prefer the actual /vehicles static page if it exists (so we don't always load the dashboard)
+    vehicles_index = os.path.join(STATIC_DIR, "vehicles", "index.html")
+    if os.path.exists(vehicles_index):
+        return FileResponse(vehicles_index)
+    # Fallback to root index.html (SPA client-side routing can still handle it)
+    root_index = os.path.join(STATIC_DIR, "index.html")
+    if os.path.exists(root_index):
+        return FileResponse(root_index)
     return JSONResponse({"detail": "Uygulama derlenmiş statik dosyayı bulamadı."}, status_code=404)
 
 # --- API aliases under /api (backward compatible) ---
