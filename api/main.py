@@ -62,6 +62,20 @@ async def spa_fallback(request: Request, exc: StarletteHTTPException):
             return FileResponse(index_path)
     return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
+
+# --- Timezone helpers (Europe/Istanbul default) ---
+def _tz():
+    try:
+        return ZoneInfo(os.getenv("TZ", "Europe/Istanbul"))
+    except Exception:
+        return timezone.utc
+
+def now_local():
+    return datetime.now(_tz())
+
+def today_local():
+    return now_local().date()
+
 EMAIL_TEMPLATE = """
 # --- Time helpers (use app TZ instead of container default) ---
 def _tz():
