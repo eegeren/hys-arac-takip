@@ -67,24 +67,24 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <section className="space-y-6">
-      <div className="flex items-center justify-between">
+    <section className="space-y-6 px-3 sm:px-4 md:px-6 max-w-7xl mx-auto">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold">Belge Takip Panosu</h2>
+          <h2 className="text-xl sm:text-2xl font-semibold">Belge Takip Panosu</h2>
           <p className="text-sm text-slate-400">Önümüzdeki 60 gün içinde süresi dolacak belgeler</p>
         </div>
-        <span className="rounded bg-slate-800 px-3 py-1 text-sm text-slate-300">
+        <span className="self-start sm:self-auto rounded bg-slate-800 px-3 py-1 text-xs sm:text-sm text-slate-300">
           {loading ? "Yükleniyor..." : `${docs.length} belge`}
         </span>
       </div>
 
       {error ? (
-        <p className="rounded-lg border border-rose-500/40 bg-rose-900/40 p-4 text-sm text-rose-100">
+        <p className="rounded-lg border border-rose-500/40 bg-rose-900/40 p-3 sm:p-4 text-xs sm:text-sm text-rose-100">
           {error}
         </p>
       ) : null}
 
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
         {docs.length === 0 && !loading ? (
           <p className="rounded-lg border border-slate-700 bg-slate-800/70 p-4 text-slate-300">
             Önümüzdeki 60 gün içinde süresi dolacak belge bulunmuyor.
@@ -93,16 +93,16 @@ export default function DashboardPage() {
           docs.map((doc) => (
             <article
               key={doc.id ?? doc.doc_id}
-              className={`rounded-xl border shadow-lg shadow-slate-900/40 transition hover:-translate-y-1 hover:shadow-slate-800/60 ${statusClass(doc.status)}`}
+              className={`rounded-xl border shadow-lg shadow-slate-900/40 transition hover:-translate-y-1 hover:shadow-slate-800/60 focus-within:ring-1 ring-white/10 ${statusClass(doc.status)} `}
             >
-              <div className="space-y-2 p-5">
+              <div className="space-y-2.5 p-4 sm:p-5">
                 <div className="flex items-center justify-between">
                   <span className="text-sm uppercase tracking-wide text-white/70">Plaka</span>
-                  <span className="text-lg font-semibold text-white">{doc.plate}</span>
+                  <span className="text-base sm:text-lg font-semibold text-white break-words">{doc.plate}</span>
                 </div>
                 <div>
                   <span className="text-sm uppercase tracking-wide text-white/70">Belge Türü</span>
-                  <h3 className="text-xl font-semibold capitalize text-white">{doc.doc_type.replace(/_/g, " ")}</h3>
+                  <h3 className="text-lg sm:text-xl font-semibold capitalize text-white break-words">{doc.doc_type.replace(/_/g, " ")}</h3>
                 </div>
                 {doc.valid_from ? (
                   <div className="flex items-center justify-between text-xs text-white/70">
@@ -110,18 +110,18 @@ export default function DashboardPage() {
                     <span>{new Date(doc.valid_from).toLocaleDateString("tr-TR")}</span>
                   </div>
                 ) : null}
-                <div className="flex items-center justify-between text-sm text-white/80">
+                <div className="flex items-center justify-between text-sm sm:text-base text-white/80">
                   <span>Bitiş Tarihi</span>
                   <span>{new Date(doc.valid_to).toLocaleDateString("tr-TR")}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm font-medium text-white">
+                <div className="flex items-center justify-between text-sm sm:text-base font-medium text-white">
                   <span>Kalan Gün</span>
                   <span>{doc.days_left ?? "-"}</span>
                 </div>
                 {doc.note ? (
-                  <p className="text-xs text-white/70">Not: {doc.note}</p>
+                  <p className="text-xs sm:text-sm text-white/70 break-words">Not: {doc.note}</p>
                 ) : null}
-                <div className="text-xs text-white/70">
+                <div className="text-xs sm:text-sm text-white/70 break-all">
                   Sorumlu: {doc.responsible_email ?? "Tanımlı değil"}
                 </div>
               </div>
