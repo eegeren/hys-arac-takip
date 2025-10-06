@@ -1,4 +1,3 @@
-
 "use client";
 import { apiUrl } from "../../lib/api";
 
@@ -10,9 +9,18 @@ const DOCUMENT_TYPES = [
   { value: "k_document", label: "K Belgesi" },
   { value: "traffic_insurance", label: "Trafik Sigortası" },
   { value: "kasko", label: "Kasko" },
+  // Yeni tipler (belge yapısını bozmadan bakım kaydı için)
+  { value: "service_oil", label: "Yağ Bakımı" },
+  { value: "service_general", label: "Genel Bakım" },
 ];
 
+const MAINTENANCE_TYPES = [
+  { value: "service_oil", label: "Yağ Bakımı" },
+  { value: "service_general", label: "Genel Bakım" },
+] as const;
+
 const PASSWORD_STORAGE_KEY = "hys-fleet-admin-password";
+
 const DOC_TYPE_LABELS: Record<string, string> = {
   inspection: "Muayene",
   muayene: "Muayene",
@@ -23,12 +31,23 @@ const DOC_TYPE_LABELS: Record<string, string> = {
   insurance: "Trafik Sigortası",
   trafik_sigortası: "Trafik Sigortası",
   kasko: "Kasko",
+  service_oil: "Yağ Bakımı",
+  service_general: "Genel Bakım",
 };
 
 const docTypeLabel = (value: string) => {
   const safe = value ?? "";
   const key = safe.toLowerCase().replace(/\s+/g, "_");
   return DOC_TYPE_LABELS[key] ?? safe.replace(/_/g, " ");
+};
+
+// note içinden km=123456 değerini ayıklar
+const parseKmFromNote = (note?: string | null): number | null => {
+  if (!note) return null;
+  const m = note.match(/km\s*=\s*(\d{1,9})/i);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) ? n : null;
 };
 
 type Vehicle = {
@@ -114,6 +133,8 @@ export default function VehiclesPage() {
   const [deleteBusyId, setDeleteBusyId] = useState<number | null>(null);
   const [adminPassword, setAdminPassword] = useState("");
   const [selectedVehicleId, setSelectedVehicleId] = useState<number | null>(null);
+
+  // Belge formu (mevcut)
   const [docForm, setDocForm] = useState({
     doc_type: DOCUMENT_TYPES[0].value,
     valid_from: "",
@@ -123,6 +144,22 @@ export default function VehiclesPage() {
   const [docSubmitting, setDocSubmitting] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
   const [docDeleteBusyId, setDocDeleteBusyId] = useState<number | null>(null);
+
+  // Yeni: Bakım formu (KM ile)
+  const [mntForm, setMntForm] = useState<{
+    mnt_type: (typeof MAINTENANCE_TYPES)[number]["value"];
+    date: string; // valid_from/valid_to için aynı gün
+    km: string;   // string input, sayıya çevireceğiz
+    note: string;
+  }>({
+    mnt_type: "service_oil",
+    date: "",
+    km: "",
+    note: "",
+  });
+  const [mntSubmitting, setMntSubmitting] = useState(false);
+  const [mntError, setMntError] = useState<string | null>(null);
+
   const isAdmin = adminPassword.trim().length > 0;
 
   useEffect(() => {
@@ -160,6 +197,7 @@ export default function VehiclesPage() {
     setAdminPassword(answer.trim());
     setFormError(null);
     setDocError(null);
+    setMntError(null);
   };
 
   useEffect(() => {
@@ -247,6 +285,10 @@ export default function VehiclesPage() {
 
   const handleDocFormChange = (field: keyof typeof docForm, value: string) => {
     setDocForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleMntFormChange = (field: keyof typeof mntForm, value: string) => {
+    setMntForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleAddVehicle = async (event: FormEvent<HTMLFormElement>) => {
@@ -369,6 +411,65 @@ export default function VehiclesPage() {
     }
   };
 
+  // Yeni: Bakım kaydı (KM ile) — documents API’sini kullanır
+  const handleAddMaintenance = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setMntError(null);
+    if (!selectedVehicleId) {
+      setMntError("Önce araç seçin");
+      return;
+    }
+    if (!adminPassword.trim()) {
+      setMntError("Şifre gerekli");
+      return;
+    }
+    if (!mntForm.date) {
+      setMntError("Bakım tarihi zorunlu");
+      return;
+    }
+    const kmNum = mntForm.km ? Number(mntForm.km) : NaN;
+    if (mntForm.km && (Number.isNaN(kmNum) || kmNum < 0)) {
+      setMntError("KM değeri geçersiz");
+      return;
+    }
+
+    const noteParts = [];
+    if (mntForm.km) noteParts.push(`km=${kmNum}`);
+    if (mntForm.note.trim()) noteParts.push(mntForm.note.trim());
+    const noteCombined = noteParts.join("; ");
+
+    const payload = {
+      vehicle_id: selectedVehicleId,
+      doc_type: mntForm.mnt_type,        // service_oil | service_general
+      valid_from: mntForm.date,          // bakım tarihi
+      valid_to: mntForm.date,            // aynı gün
+      note: noteCombined || null,
+      admin_password: adminPassword,
+    };
+
+    try {
+      setMntSubmitting(true);
+      const res = await fetch(apiUrl("/api/documents"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errorPayload = await res.json().catch(() => ({}));
+        throw new Error(errorPayload.detail ?? "Bakım kaydı eklenemedi");
+      }
+      setMntForm({ mnt_type: "service_oil", date: "", km: "", note: "" });
+      setToast("Bakım kaydı oluşturuldu");
+      await mutate(apiUrl("/api/vehicles"));
+      await refreshData();
+    } catch (error) {
+      console.error(error);
+      setMntError((error as Error).message);
+    } finally {
+      setMntSubmitting(false);
+    }
+  };
+
   const handleDeleteDocument = async (documentId: number) => {
     if (!adminPassword.trim()) {
       setToast("Belge silmek için şifre girin");
@@ -395,12 +496,39 @@ export default function VehiclesPage() {
     }
   };
 
+  // Araç için son KM: service_* belgelerindeki en güncel km’yi bul
+  const getLastKmForVehicle = (v: Vehicle): number | null => {
+    const serviceDocs = (v.documents ?? []).filter(d =>
+      d.doc_type === "service_oil" || d.doc_type === "service_general"
+    );
+    if (serviceDocs.length === 0) return null;
+
+    // Tarihe göre en yeni bakım belgesini bul
+    const withDates = serviceDocs.map(d => ({
+      d,
+      date: d.valid_from ?? d.valid_to ?? null,
+    })).filter(x => !!x.date) as Array<{ d: Vehicle["documents"][number]; date: string }>;
+
+    // Hem en büyük tarih hem de nottan km parse’ı yapıp en yüksek km’yi tercih et
+    let bestKm: number | null = null;
+    for (const s of serviceDocs) {
+      const km = parseKmFromNote(s.note);
+      if (km != null) {
+        if (bestKm == null || km > bestKm) bestKm = km;
+      }
+    }
+    if (bestKm != null) return bestKm;
+
+    // KM bulunamadıysa null
+    return null;
+  };
+
   return (
     <section className="space-y-10">
       <header className="space-y-3">
         <h2 className="text-3xl font-semibold text-white">Araç Yönetimi</h2>
         <p className="text-sm text-slate-400">
-          Araçları ekleyin, kaldırın ve yaklaşan belge bitişlerini takip edin.
+          Araçları ekleyin, kaldırın ve yaklaşan belge bitişlerini takip edin. Bakım ve KM girişleri için aşağıdaki formları kullanın.
         </p>
       </header>
 
@@ -411,6 +539,7 @@ export default function VehiclesPage() {
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-[2fr_3fr]">
+        {/* Yeni Araç Ekle */}
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
           <h3 className="text-lg font-semibold text-white">Yeni Araç Ekle</h3>
           <p className="mb-4 text-sm text-slate-400">
@@ -479,6 +608,7 @@ export default function VehiclesPage() {
           </form>
         </div>
 
+        {/* Yaklaşan Bitişler + Belge Oluştur */}
         <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-lg font-semibold text-white">Yaklaşan Bitişler (60 gün)</h3>
@@ -610,9 +740,104 @@ export default function VehiclesPage() {
               </div>
             </form>
           </div>
+
+          {/* Yeni: Bakım Kaydı (KM ile) */}
+          <div className="mt-8 border-t border-slate-800 pt-5">
+            <h3 className="text-lg font-semibold text-white">Bakım Kaydı Oluştur (KM ile)</h3>
+            <p className="mb-4 text-sm text-slate-400">
+              Yağ bakımı / genel bakım için tarih ve KM girin. KM bilgisi not içinde saklanır (ör. <code>km=185000</code>).
+            </p>
+            <form className="space-y-4" onSubmit={handleAddMaintenance}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <label className="text-sm text-slate-300">
+                  Araç*
+                  <select
+                    value={selectedVehicleId ?? ""}
+                    onChange={(e) => setSelectedVehicleId(Number(e.target.value) || null)}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-slate-500 focus:outline-none"
+                    required
+                  >
+                    <option value="" disabled>
+                      Araç seçin
+                    </option>
+                    {vehicles.map((vehicle) => (
+                      <option key={vehicle.id} value={vehicle.id}>
+                        {vehicle.plate} {vehicle.make ? `- ${vehicle.make}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm text-slate-300">
+                  Bakım Türü*
+                  <select
+                    value={mntForm.mnt_type}
+                    onChange={(e) => handleMntFormChange("mnt_type", e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-slate-500 focus:outline-none"
+                    required
+                  >
+                    {MAINTENANCE_TYPES.map((t) => (
+                      <option key={t.value} value={t.value}>
+                        {t.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm text-slate-300">
+                  Bakım Tarihi*
+                  <input
+                    type="date"
+                    value={mntForm.date}
+                    onChange={(e) => handleMntFormChange("date", e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-slate-500 focus:outline-none"
+                    required
+                  />
+                </label>
+                <label className="text-sm text-slate-300">
+                  KM
+                  <input
+                    value={mntForm.km}
+                    onChange={(e) => handleMntFormChange("km", e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-white focus:border-slate-500 focus:outline-none"
+                    placeholder="Örn. 185000"
+                    inputMode="numeric"
+                  />
+                </label>
+                <label className="md:col-span-2 text-sm text-slate-300">
+                  Not
+                  <textarea
+                    value={mntForm.note}
+                    onChange={(e) => handleMntFormChange("note", e.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white focus:border-slate-500 focus:outline-none"
+                    rows={3}
+                    placeholder="Örn. Filtreler değişti"
+                  />
+                </label>
+              </div>
+              {mntError ? (
+                <p className="rounded-md border border-rose-500/50 bg-rose-900/40 px-3 py-2 text-sm text-rose-100">
+                  {mntError}
+                </p>
+              ) : null}
+              {!isAdmin ? (
+                <p className="rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-400">
+                  Bakım eklemek için önce şifre girin.
+                </p>
+              ) : null}
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  disabled={mntSubmitting || !isAdmin}
+                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {mntSubmitting ? "Kaydediliyor..." : "Bakımı Kaydet"}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
 
+      {/* Araç Listesi */}
       <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-5">
         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
@@ -654,6 +879,7 @@ export default function VehiclesPage() {
                 <th className="px-4 py-3 text-left">Plaka</th>
                 <th className="px-4 py-3 text-left">Marka/Model</th>
                 <th className="px-4 py-3 text-left">Belge Durumu</th>
+                <th className="px-4 py-3 text-left">Son KM</th>
                 <th className="px-4 py-3 text-left">Eklenme</th>
                 <th className="px-4 py-3 text-right">İşlemler</th>
               </tr>
@@ -661,101 +887,109 @@ export default function VehiclesPage() {
             <tbody className="divide-y divide-slate-800">
               {vehiclesLoading ? (
                 <tr>
-                  <td className="px-4 py-4 text-center text-slate-400" colSpan={5}>
+                  <td className="px-4 py-4 text-center text-slate-400" colSpan={6}>
                     Araçlar yükleniyor...
                   </td>
                 </tr>
               ) : filteredVehicles.length === 0 ? (
                 <tr>
-                  <td className="px-4 py-4 text-center text-slate-400" colSpan={5}>
+                  <td className="px-4 py-4 text-center text-slate-400" colSpan={6}>
                     Sonuç bulunamadı.
                   </td>
                 </tr>
               ) : (
-                filteredVehicles.map((vehicle) => (
-                  <tr key={vehicle.id} className="hover:bg-slate-800/60">
-                    <td className="px-4 py-4 font-semibold text-white">{vehicle.plate}</td>
-                    <td className="px-4 py-4">
-                      <div className="text-white">
-                        {(vehicle.make ?? "").trim() || (vehicle.model ?? "").trim()
-                          ? `${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
-                          : "-"}
-                      </div>
-                      {vehicle.year ? (
-                        <div className="text-xs text-slate-500">{vehicle.year}</div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-4">
-                      <div
-                        className={`inline-flex min-w-[10rem] flex-col rounded-lg border px-3 py-2 text-xs ${statusClass(
-                          vehicle.next_status ?? (vehicle.days_left != null && vehicle.days_left >= 0
-                            ? vehicle.days_left <= 7
-                              ? "critical"
-                              : vehicle.days_left <= 30
-                                ? "warning"
-                                : "ok"
-                            : vehicle.days_left != null && vehicle.days_left < 0
-                              ? "expired"
-                              : "unknown"),
-                          "bg-slate-900 border-slate-700"
-                        )}`}
-                      >
-                        <span className="font-semibold">
-                          {vehicle.next_valid_to
-                            ? new Date(vehicle.next_valid_to).toLocaleDateString("tr-TR")
-                            : "Belge bulunmuyor"}
-                        </span>
-                        <span className="text-white/80">{formatDaysLabel(vehicle.days_left)}</span>
-                        <span className="text-white/60">Toplam belge: {vehicle.document_count}</span>
-                      </div>
-                      {vehicle.documents.length > 0 ? (
-                        <div className="mt-3 space-y-2 text-xs text-white/80">
-                          {vehicle.documents.map((doc) => (
-                            <div
-                              key={`${vehicle.id}-${doc.id}`}
-                              className={`rounded-lg border px-3 py-2 ${statusClass(doc.status, "bg-slate-900/80 border-slate-700")}`}
-                            >
-                              <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-white/70">
-                                <span>{docTypeLabel(doc.doc_type)}</span>
-                                <div className="flex items-center gap-2">
-                                  <span>{formatDaysLabel(doc.days_left)}</span>
-                                  <button
-                                    onClick={() => handleDeleteDocument(doc.id)}
-                                    disabled={docDeleteBusyId === doc.id || !isAdmin}
-                                    className="rounded-md border border-rose-400/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rose-100 transition hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                                  >
-                                    {docDeleteBusyId === doc.id ? "Siliniyor" : "Sil"}
-                                  </button>
+                filteredVehicles.map((vehicle) => {
+                  const lastKm = getLastKmForVehicle(vehicle);
+                  return (
+                    <tr key={vehicle.id} className="hover:bg-slate-800/60">
+                      <td className="px-4 py-4 font-semibold text-white">{vehicle.plate}</td>
+                      <td className="px-4 py-4">
+                        <div className="text-white">
+                          {(vehicle.make ?? "").trim() || (vehicle.model ?? "").trim()
+                            ? `${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
+                            : "-"}
+                        </div>
+                        {vehicle.year ? (
+                          <div className="text-xs text-slate-500">{vehicle.year}</div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-4">
+                        <div
+                          className={`inline-flex min-w-[10rem] flex-col rounded-lg border px-3 py-2 text-xs ${statusClass(
+                            vehicle.next_status ?? (vehicle.days_left != null && vehicle.days_left >= 0
+                              ? vehicle.days_left <= 7
+                                ? "critical"
+                                : vehicle.days_left <= 30
+                                  ? "warning"
+                                  : "ok"
+                              : vehicle.days_left != null && vehicle.days_left < 0
+                                ? "expired"
+                                : "unknown"),
+                            "bg-slate-900 border-slate-700"
+                          )}`}
+                        >
+                          <span className="font-semibold">
+                            {vehicle.next_valid_to
+                              ? new Date(vehicle.next_valid_to).toLocaleDateString("tr-TR")
+                              : "Belge bulunmuyor"}
+                          </span>
+                          <span className="text-white/80">{formatDaysLabel(vehicle.days_left)}</span>
+                          <span className="text-white/60">Toplam belge: {vehicle.document_count}</span>
+                        </div>
+                        {vehicle.documents.length > 0 ? (
+                          <div className="mt-3 space-y-2 text-xs text-white/80">
+                            {vehicle.documents.map((doc) => (
+                              <div
+                                key={`${vehicle.id}-${doc.id}`}
+                                className={`rounded-lg border px-3 py-2 ${statusClass(doc.status, "bg-slate-900/80 border-slate-700")}`}
+                              >
+                                <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-white/70">
+                                  <span>{docTypeLabel(doc.doc_type)}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span>{formatDaysLabel(doc.days_left)}</span>
+                                    <button
+                                      onClick={() => handleDeleteDocument(doc.id)}
+                                      disabled={docDeleteBusyId === doc.id || !isAdmin}
+                                      className="rounded-md border border-rose-400/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rose-100 transition hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                                    >
+                                      {docDeleteBusyId === doc.id ? "Siliniyor" : "Sil"}
+                                    </button>
+                                  </div>
+                                </div>
+                                <div className="mt-1 flex flex-col gap-1 text-[11px] text-white/80">
+                                  <span>
+                                    Bitiş: {doc.valid_to ? new Date(doc.valid_to).toLocaleDateString("tr-TR") : "-"}
+                                  </span>
+                                  {doc.valid_from ? (
+                                    <span>Başlangıç: {new Date(doc.valid_from).toLocaleDateString("tr-TR")}</span>
+                                  ) : null}
+                                  {doc.note ? <span>Not: {doc.note}</span> : null}
                                 </div>
                               </div>
-                              <div className="mt-1 flex flex-col gap-1 text-[11px] text-white/80">
-                                <span>Bitiş: {doc.valid_to ? new Date(doc.valid_to).toLocaleDateString("tr-TR") : "-"}</span>
-                                {doc.valid_from ? (
-                                  <span>Başlangıç: {new Date(doc.valid_from).toLocaleDateString("tr-TR")}</span>
-                                ) : null}
-                                {doc.note ? <span>Not: {doc.note}</span> : null}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-4 text-sm text-slate-300">
-                      {vehicle.created_at
-                        ? new Date(vehicle.created_at).toLocaleString("tr-TR")
-                        : "-"}
-                    </td>
-                    <td className="px-4 py-4 text-right">
-                      <button
-                        onClick={() => handleDeleteVehicle(vehicle.id)}
-                        disabled={deleteBusyId === vehicle.id || !isAdmin}
-                        className="rounded-lg border border-rose-500/60 px-3 py-1 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {deleteBusyId === vehicle.id ? "Siliniyor..." : "Sil"}
-                      </button>
-                    </td>
-                  </tr>
-                ))
+                            ))}
+                          </div>
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-300">
+                        {lastKm != null ? `${lastKm.toLocaleString("tr-TR")} km` : "-"}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-slate-300">
+                        {vehicle.created_at
+                          ? new Date(vehicle.created_at).toLocaleString("tr-TR")
+                          : "-"}
+                      </td>
+                      <td className="px-4 py-4 text-right">
+                        <button
+                          onClick={() => handleDeleteVehicle(vehicle.id)}
+                          disabled={deleteBusyId === vehicle.id || !isAdmin}
+                          className="rounded-lg border border-rose-500/60 px-3 py-1 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {deleteBusyId === vehicle.id ? "Siliniyor..." : "Sil"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
