@@ -644,6 +644,14 @@ scheduler.start()
 def health_api():
     return health()
 
+@app.get("/api/debug/vehicles_probe")
+def debug_vehicles_probe(q: str | None = None):
+    try:
+        return list_vehicles(q)
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "trace": traceback.format_exc()}
+
 @app.get("/api/vehicles")
 def list_vehicles_api(q: str | None = None):
     return list_vehicles(q)
