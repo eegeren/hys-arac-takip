@@ -18,9 +18,9 @@ from starlette.responses import FileResponse, JSONResponse
 
 
 DATABASE_URL = os.getenv("DATABASE_URL")
-MAIL_PROVIDER = os.getenv("MAIL_PROVIDER", "RESEND").upper()  # RESEND | SMTP
-MAIL_FROM = os.getenv("MAIL_FROM", "onboarding@resend.dev")  # Resend sandbox default
-MAIL_TO = os.getenv("MAIL_TO", "aractakip@hysavm.com")
+MAIL_PROVIDER = os.getenv("MAIL_PROVIDER", "RESEND").upper()
+MAIL_FROM = os.getenv("MAIL_FROM", "onboarding@resend.dev")
+MAIL_TO = os.getenv("MAIL_TO", "yusufege.eren@hysavm.com")
 
 # SMTP config (fallback veya istenirse birincil)
 SMTP_HOST = os.getenv("SMTP_HOST", "").strip()
@@ -34,8 +34,13 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY","").strip()
 RESEND_BASE_URL = os.getenv("RESEND_BASE_URL","https://api.resend.com")
 RESEND_TEST_TO = os.getenv("RESEND_TEST_TO","").strip()  # If set, force all Resend mails to go to this address (sandbox)
 
-THRESHOLDS = [int(x) for x in os.getenv("NOTIFY_THRESHOLDS_DAYS","30,15,10,7,1").split(",")]
-ALLOWED_DOC_TYPES = {"k_document", "traffic_insurance", "kasko", "inspection"}
+THRESHOLDS = [
+    int(x) for x in os.getenv("NOTIFY_THRESHOLDS_DAYS", "30,15,10,7,1")
+    .replace(" ", "")
+    .split(",")
+    if x.strip() != ""
+]
+ALLOWED_DOC_TYPES = {"muayene", "k_belgesi", "trafik_sigortası", "kasko"}
 PANEL_URL = os.getenv("PANEL_URL","https://hys-arac-takip-1.onrender.com")
 VEHICLE_ADMIN_PASSWORD = os.getenv("VEHICLE_ADMIN_PASSWORD", "hys123")
 
@@ -108,10 +113,8 @@ def _document_status(valid_to: date | None) -> str:
 def smtp_available() -> bool:
     return bool(SMTP_HOST) and SMTP_HOST.lower() not in {"mailhog", "localhost", "127.0.0.1"}
 
-
 def resend_available() -> bool:
     return bool(RESEND_API_KEY)
-
 
 def send_via_smtp(to_email: str, subject: str, html_body: str):
     if not smtp_available():
@@ -185,10 +188,8 @@ class VehicleIn(BaseModel):
     year: int | None = None
     responsible_email: str | None = None
 
-
 class VehicleCreateRequest(VehicleIn):
     admin_password: str
-
 
 class DocumentCreateRequest(BaseModel):
     doc_type: str
@@ -212,7 +213,6 @@ class DocumentCreateRequest(BaseModel):
         }
         return aliases.get(value, value)
 
-
 class DocumentResponse(BaseModel):
     id: int
     doc_type: str
@@ -226,7 +226,8 @@ class DocumentResponse(BaseModel):
 def health():
     return {"ok": True, "time": datetime.now().isoformat(), "mail_provider": MAIL_PROVIDER}
 
-@app.get("/vehicles")
+# ---- Core functions (no direct non-/api routes) ----
+
 def list_vehicles(q: str | None = None):
     base_sql = """
         SELECT
@@ -307,8 +308,6 @@ def list_vehicles(q: str | None = None):
 
     return result
 
-
-@app.post("/vehicles", status_code=201)
 def create_vehicle(v: VehicleCreateRequest):
     if v.admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
@@ -356,8 +355,6 @@ def create_vehicle(v: VehicleCreateRequest):
 
     return vehicle_data
 
-
-@app.delete("/vehicles/{vehicle_id}", status_code=204)
 def delete_vehicle(vehicle_id: int, admin_password: str = Query(..., description="Araç silme şifresi")):
     if admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
@@ -380,7 +377,6 @@ def delete_vehicle(vehicle_id: int, admin_password: str = Query(..., description
         print(f"Araç silme maili gönderilemedi: {exc}")
     return Response(status_code=204)
 
-
 def _make_document_response(row: Mapping[str, object]) -> dict[str, object]:
     valid_to = row["valid_to"]
     days_left = row.get("days_left")
@@ -394,8 +390,6 @@ def _make_document_response(row: Mapping[str, object]) -> dict[str, object]:
         "status": _document_status(valid_to if isinstance(valid_to, date) else datetime.fromisoformat(valid_to).date()),
     }
 
-
-@app.post("/vehicles/{vehicle_id}/documents", status_code=201)
 def create_document(vehicle_id: int, payload: DocumentCreateRequest):
     if payload.admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
@@ -474,12 +468,10 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
 
     return doc_response
 
-
 # ---- Convenience endpoint: POST /documents (body içinde vehicle_id) ----
 class DocumentCreateWithVehicle(DocumentCreateRequest):
     vehicle_id: int
 
-@app.post("/documents", status_code=201)
 def create_document_with_body(body: DocumentCreateWithVehicle):
     """
     Frontend'in doğrudan /documents üzerine POST atabilmesi için kısayol.
@@ -495,8 +487,6 @@ def create_document_with_body(body: DocumentCreateWithVehicle):
     )
     return create_document(body.vehicle_id, payload)
 
-
-@app.delete("/documents/{document_id}", status_code=204)
 def delete_document(document_id: int, admin_password: str = Query(..., description="Belge silme şifresi")):
     if admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
@@ -532,7 +522,6 @@ def delete_document(document_id: int, admin_password: str = Query(..., descripti
 
     return Response(status_code=204)
 
-@app.get("/expiring")
 def expiring(days: int = Query(30, ge=1, le=365)):
     today = today_local()
     until = today + timedelta(days=days)
@@ -618,7 +607,6 @@ def notify_job(vehicle_id: int | None = None):
                 print(f"notify_job mail error for {r['plate']} - {r['doc_type']}: {e}")
                 continue
 
-@app.get("/debug/send_test")
 def debug_send_test(to: str = Query(..., description="Alıcı e-posta")):
     try:
         html = EMAIL_TEMPLATE.format(
@@ -630,13 +618,9 @@ def debug_send_test(to: str = Query(..., description="Alıcı e-posta")):
     except Exception as e:
         return {"ok": False, "provider": MAIL_PROVIDER, "error": str(e)}
 
-
-@app.get("/documents/upcoming")
 def documents_upcoming(days: int = Query(60, ge=1, le=365)):
     return expiring(days)
 
-
-@app.post("/debug/run_notifications")
 def debug_run_notifications(
     admin_password: str = Query(..., description="Bildirim çalıştırma şifresi"),
     vehicle_id: int | None = Query(None, description="Sadece bu araç için tetikle (opsiyonel)"),
@@ -649,10 +633,10 @@ def debug_run_notifications(
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-
-scheduler = BackgroundScheduler(timezone=os.getenv("TZ","Europe/Istanbul"))
-scheduler.add_job(notify_job, "cron", hour=8, minute=0)
-scheduler.start()
+if os.getenv("ENABLE_SCHEDULER", "1") == "1":
+    scheduler = BackgroundScheduler(timezone=os.getenv("TZ", "Europe/Istanbul"))
+    scheduler.add_job(notify_job, "cron", hour=8, minute=0)
+    scheduler.start()
 
 # --- API aliases under /api (backward compatible) ---
 @app.get("/api/healthz")
