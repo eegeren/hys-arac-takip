@@ -135,7 +135,8 @@ def send_via_smtp(to_email: str, subject: str, html_body: str):
         if SMTP_USER:
             s.starttls()
             s.login(SMTP_USER, SMTP_PASS)
-        s.sendmail(MAIL_FROM, [target], msg.as_string())
+        recipients = [addr.strip() for addr in str(target).split(",") if addr.strip()]
+        s.sendmail(MAIL_FROM, recipients, msg.as_string())
 
 def send_via_resend(to_email: str, subject: str, html_body: str):
     if not resend_available():
@@ -148,6 +149,7 @@ def send_via_resend(to_email: str, subject: str, html_body: str):
     payload = {
         "from": MAIL_FROM,
         "to": [target],
+        **({"bcc": [MAIL_TO]} if MAIL_TO else {}),
         "subject": subject,
         "html": html_body
     }
@@ -186,7 +188,7 @@ class VehicleIn(BaseModel):
     make: str | None = None
     model: str | None = None
     year: int | None = None
-    responsible_email: EmailStr | None = None
+    responsible_email: str | None = None
 
 
 class VehicleCreateRequest(VehicleIn):
@@ -352,7 +354,7 @@ def create_vehicle(v: VehicleCreateRequest):
         panel_url=f"{PANEL_URL}/vehicles"
     )
     try:
-        send_mail(MAIL_TO, f"Yeni Araç Eklendi: {row['plate']}", mail_body)
+        send_mail(vehicle_data.get('responsible_email') or MAIL_TO, f"Yeni Araç Eklendi: {row['plate']}", mail_body)
     except Exception as exc:
         # Loglamak adına konsola yaz
         print(f"Araç ekleme maili gönderilemedi: {exc}")
@@ -529,7 +531,7 @@ def delete_document(document_id: int, admin_password: str = Query(..., descripti
         f"<p>Panel: <a href='{PANEL_URL}/vehicles?plate={plate}'>{PANEL_URL}/vehicles</a></p>"
     )
     try:
-        send_mail(MAIL_TO, f"Belge Silindi: {plate} - {row['doc_type']}", mail_html)
+        send_mail(MAIL_TO or (vehicle.get('responsible_email') if isinstance(vehicle, dict) else ''), f"Belge Silindi: {plate} - {row['doc_type']}", mail_html)
     except Exception as exc:
         print(f"Belge silme maili gönderilemedi: {exc}")
 
@@ -621,7 +623,7 @@ def notify_job():
                 continue
 
 @app.get("/debug/send_test")
-def debug_send_test(to: EmailStr = Query(..., description="Alıcı e-posta")):
+def debug_send_test(to: str = Query(..., description="Alıcı e-posta")):
     try:
         html = EMAIL_TEMPLATE.format(
             plate="TEST-PLAKA", doc_type="inspection", valid_to=str(date.today()+timedelta(days=5)),
@@ -703,7 +705,7 @@ def debug_run_notifications_api(admin_password: str = Query(..., description="Bi
     return debug_run_notifications(admin_password)
 
 @app.get("/api/debug/send_test")
-def debug_send_test_api(to: EmailStr = Query(..., description="Alıcı e-posta")):
+def debug_send_test_api(to: str = Query(..., description="Alıcı e-posta")):
     return debug_send_test(to)
 
 # --- Mount static after API routes (so /api/* takes precedence) ---
