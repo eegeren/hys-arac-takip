@@ -16,6 +16,16 @@ type UpcomingDocument = {
   responsible_email?: string | null;
 };
 
+type Vehicle = {
+  id: number;
+  plate: string;
+  make: string | null;
+  model: string | null;
+  year: number | null;
+  created_at: string;
+  document_count: number;
+};
+
 const statusClass = (status: string) => {
   switch (status) {
     case "critical":
@@ -33,36 +43,45 @@ const statusClass = (status: string) => {
 
 export default function DashboardPage() {
   const [docs, setDocs] = useState<UpcomingDocument[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    const fetchDocs = async () => {
+    const fetchDocsAndVehicles = async () => {
       try {
-        const res = await fetch(apiUrl("/api/documents/upcoming?days=60"), {
+        const resDocs = await fetch(apiUrl("/api/documents/upcoming?days=60"), {
           signal: controller.signal,
         });
-        if (!res.ok) throw new Error("API hatası");
-        const data = (await res.json()) as UpcomingDocument[];
+        if (!resDocs.ok) throw new Error("API hatası");
+        const dataDocs = (await resDocs.json()) as UpcomingDocument[];
         setDocs(
-          data.map((doc) => ({
+          dataDocs.map((doc) => ({
             ...doc,
             days_left: doc.days_left !== null ? Number(doc.days_left) : null,
           }))
         );
+
+        const resVehicles = await fetch(apiUrl("/api/vehicles"), {
+          signal: controller.signal,
+        });
+        if (!resVehicles.ok) throw new Error("Araçlar API hatası");
+        const dataVehicles = (await resVehicles.json()) as Vehicle[];
+        setVehicles(dataVehicles);
+
         setError(null);
       } catch (err) {
         if ((err as Error).name === "AbortError") return;
         console.error(err);
-        setError("Belgeler çekilirken hata oluştu");
+        setError("Belgeler veya araçlar çekilirken hata oluştu");
       } finally {
         setLoading(false);
       }
     };
 
-    fetchDocs();
+    fetchDocsAndVehicles();
     return () => controller.abort();
   }, []);
 
@@ -127,6 +146,47 @@ export default function DashboardPage() {
               </div>
             </article>
           ))
+        )}
+      </div>
+
+      <div className="pt-10">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+          <h2 className="text-xl sm:text-2xl font-semibold">Araçlar</h2>
+          <span className="self-start sm:self-auto rounded bg-slate-800 px-3 py-1 text-xs sm:text-sm text-slate-300">
+            {loading ? "Yükleniyor..." : `${vehicles.length} araç`}
+          </span>
+        </div>
+
+        {vehicles.length === 0 && !loading ? (
+          <p className="rounded-lg border border-slate-700 bg-slate-800/70 p-4 text-slate-300">
+            Kayıtlı araç bulunmamaktadır.
+          </p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:gap-5 md:grid-cols-2 xl:grid-cols-3">
+            {vehicles.map((vehicle) => (
+              <article
+                key={vehicle.id}
+                className="rounded-xl border border-slate-700 shadow-lg shadow-slate-900/40 transition hover:-translate-y-1 hover:shadow-slate-800/60 focus-within:ring-1 ring-white/10 bg-slate-800/80"
+              >
+                <div className="space-y-2.5 p-4 sm:p-5 text-white">
+                  <div className="text-lg sm:text-xl font-semibold break-words">{vehicle.plate}</div>
+                  {(vehicle.make || vehicle.model || vehicle.year) && (
+                    <div className="text-sm sm:text-base text-white/70 capitalize break-words">
+                      {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(" ")}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-xs sm:text-sm text-white/70 pt-2">
+                    <span>Belge Sayısı</span>
+                    <span>{vehicle.document_count}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-xs sm:text-sm text-white/70">
+                    <span>Kayıt Tarihi</span>
+                    <span>{new Date(vehicle.created_at).toLocaleDateString("tr-TR")}</span>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
         )}
       </div>
     </section>
