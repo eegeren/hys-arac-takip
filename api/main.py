@@ -965,6 +965,71 @@ def spa_vehicles(rest: str = ""):
         return FileResponse(root_index)
     return JSONResponse({"detail": "Uygulama derlenmiş statik dosyayı bulamadı."}, status_code=404)
 
+# --- Stats / Dashboard helpers ---
+def _stats_summary() -> dict:
+    """
+    Dashboard için belge ve araç sayıları (toplam, tür bazında, durum bazında).
+    """
+    with engine.begin() as con:
+        # Toplam araç ve toplam belge
+        vehicles_total = con.execute(text("SELECT COUNT(*) FROM vehicles")).scalar_one()
+        documents_total = con.execute(text("SELECT COUNT(*) FROM documents")).scalar_one()
+
+        # Tür bazında sayılar
+        rows_type = con.execute(
+            text("""
+                SELECT doc_type, COUNT(*) AS c
+                FROM documents
+                GROUP BY doc_type
+            """)
+        ).mappings().all()
+        by_doc_type: dict[str, int] = {}
+        for r in rows_type:
+            by_doc_type[str(r["doc_type"])] = int(r["c"])
+
+        # Durum bazında sayılar (expired/critical/warning/ok)
+        rows_status = con.execute(
+            text("""
+                SELECT
+                  CASE
+                    WHEN valid_to < CURRENT_DATE THEN 'expired'
+                    WHEN valid_to >= CURRENT_DATE AND valid_to < CURRENT_DATE + INTERVAL '8 day' THEN 'critical'
+                    WHEN valid_to < CURRENT_DATE + INTERVAL '31 day' THEN 'warning'
+                    ELSE 'ok'
+                  END AS status,
+                  COUNT(*) AS c
+                FROM documents
+                GROUP BY 1
+            """)
+        ).mappings().all()
+        by_status = {"expired": 0, "critical": 0, "warning": 0, "ok": 0}
+        for r in rows_status:
+            st = str(r["status"])
+            by_status[st] = int(r["c"])
+
+    # Türkçe etiketleri de döndürelim (frontend'de kolay kullanım için)
+    return {
+        "version": "1.3.0",
+        "totals": {
+            "vehicles": int(vehicles_total),
+            "documents": int(documents_total),
+        },
+        "by_doc_type": by_doc_type,
+        "by_status": by_status,
+        "labels_tr": DOC_TURKISH_LABELS,
+    }
+
+# --- Stats API ---
+@app.get("/api/stats/summary")
+def stats_summary_api():
+    """
+    Dashboard özet kutuları için:
+    - toplam araç / toplam belge
+    - belge türüne göre sayılar
+    - durum (expired/critical/warning/ok) dağılımı
+    """
+    return _stats_summary()
+
 # --- API aliases under /api (backward compatible) ---
 @app.get("/api/healthz")
 def health_api():
