@@ -157,6 +157,10 @@ export default function VehiclesPage() {
 
   // Düzenleme durumu
   const [editingDocId, setEditingDocId] = useState<number | null>(null);
+  // Global düzenleme modu ve sıralama
+  const [globalEdit, setGlobalEdit] = useState(false);
+  const [sortKey, setSortKey] = useState<"plate" | "make" | "model" | "year" | "next_valid_to">("plate");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editForm, setEditForm] = useState<{
     doc_type: string;
     valid_from: string;
@@ -227,6 +231,15 @@ export default function VehiclesPage() {
     return () => clearTimeout(timer);
   }, [toast]);
 
+  useEffect(() => {
+    if (!globalEdit) {
+      setEditingVehicleId(null);
+      setEditingDocId(null);
+      setVehicleEditError(null);
+      setEditError(null);
+    }
+  }, [globalEdit]);
+
   const fetchVehicles = useCallback(async () => {
     setVehiclesLoading(true);
     try {
@@ -293,12 +306,35 @@ export default function VehiclesPage() {
 
   const filteredVehicles = useMemo(() => {
     const term = search.toLowerCase();
-    return vehicles.filter((v) =>
+    const filtered = vehicles.filter((v) =>
       v.plate.toLowerCase().includes(term) ||
       (v.model ?? "").toLowerCase().includes(term) ||
       (v.make ?? "").toLowerCase().includes(term)
     );
-  }, [vehicles, search]);
+
+    // Sıralama
+    const dir = sortDir === "asc" ? 1 : -1;
+    const sorted = [...filtered].sort((a, b) => {
+      const getVal = (v: Vehicle) => {
+        switch (sortKey) {
+          case "plate": return v.plate || "";
+          case "make": return (v.make ?? "") || "";
+          case "model": return (v.model ?? "") || "";
+          case "year": return v.year ?? 0;
+          case "next_valid_to": return v.next_valid_to ? new Date(v.next_valid_to).getTime() : 0;
+          default: return "";
+        }
+      };
+      const va = getVal(a);
+      const vb = getVal(b);
+      if (typeof va === "number" && typeof vb === "number") {
+        return (va - vb) * dir;
+      }
+      return String(va).localeCompare(String(vb), "tr", { numeric: true }) * dir;
+    });
+
+    return sorted;
+  }, [vehicles, search, sortKey, sortDir]);
 
   const handleFormChange = (field: keyof VehicleFormState, value: string) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
@@ -1007,6 +1043,50 @@ export default function VehiclesPage() {
               >
                 {isAdmin ? "Şifreyi değiştir" : "Şifre gir"}
               </button>
+
+              <button
+                type="button"
+                onClick={() => setGlobalEdit((v) => !v)}
+                disabled={!isAdmin}
+                className={`rounded-full border px-3 py-1 text-xs transition ${
+                  globalEdit
+                    ? "border-sky-400 bg-sky-500/20 text-sky-100"
+                    : "border-slate-600 text-slate-200 hover:border-slate-400 hover:text-white"
+                } disabled:cursor-not-allowed disabled:opacity-60`}
+                title="Tüm sayfada düzenleme modunu aç/kapat"
+              >
+                {globalEdit ? "Düzenlemeyi kapat" : "Düzenle"}
+              </button>
+
+              {globalEdit ? (
+                <div className="flex flex-wrap items-center gap-2 pl-1">
+                  <label className="text-xs text-slate-400">
+                    Sırala:
+                    <select
+                      value={sortKey}
+                      onChange={(e) => setSortKey(e.target.value as any)}
+                      className="ml-1 rounded-md border border-slate-600 bg-slate-950 px-2 py-1 text-xs text-white"
+                    >
+                      <option value="plate">Plaka</option>
+                      <option value="make">Marka</option>
+                      <option value="model">Model</option>
+                      <option value="year">Yıl</option>
+                      <option value="next_valid_to">Bitiş Tarihi</option>
+                    </select>
+                  </label>
+                  <label className="text-xs text-slate-400">
+                    Yön:
+                    <select
+                      value={sortDir}
+                      onChange={(e) => setSortDir(e.target.value as any)}
+                      className="ml-1 rounded-md border border-slate-600 bg-slate-950 px-2 py-1 text-xs text-white"
+                    >
+                      <option value="asc">Artan</option>
+                      <option value="desc">Azalan</option>
+                    </select>
+                  </label>
+                </div>
+              ) : null}
             </div>
           </div>
           <input
@@ -1122,7 +1202,7 @@ export default function VehiclesPage() {
                             ) : null}
                             {doc.note ? <span className="break-words">Not: {doc.note}</span> : null}
                           </div>
-                          {editingDocId === doc.id ? (
+                          {(globalEdit || editingDocId === doc.id) ? (
                             <form className="mt-2 space-y-2 rounded-md border border-slate-600 bg-slate-900/80 p-2" onSubmit={(e) => handleUpdateDocument(e, doc.id)}>
                               <div className="grid gap-2 grid-cols-2">
                                 <label className="text-[11px] text-slate-300">
@@ -1201,7 +1281,7 @@ export default function VehiclesPage() {
                       ) : null}
                     </div>
                   ) : null}
-                  {editingVehicleId === vehicle.id ? (
+                  {(globalEdit || editingVehicleId === vehicle.id) ? (
                     <form className="mt-3 space-y-2 rounded-md border border-slate-600 bg-slate-900/80 p-3" onSubmit={(e) => handleUpdateVehicle(e, vehicle.id)}>
                       <div className="grid gap-2 grid-cols-2">
                         <label className="text-[11px] text-slate-300 col-span-2">
@@ -1373,7 +1453,7 @@ export default function VehiclesPage() {
                                     ) : null}
                                     {doc.note ? <span>Not: {doc.note}</span> : null}
                                   </div>
-                                  {editingDocId === doc.id ? (
+                                  {(globalEdit || editingDocId === doc.id) ? (
                                     <form className="mt-2 space-y-2 rounded-md border border-slate-600 bg-slate-900/80 p-3" onSubmit={(e) => handleUpdateDocument(e, doc.id)}>
                                       <div className="grid gap-2 md:grid-cols-4">
                                         <label className="text-[11px] text-slate-300">
@@ -1474,7 +1554,7 @@ export default function VehiclesPage() {
                           </button>
                         </td>
                       </tr>
-                      {editingVehicleId === vehicle.id ? (
+                      {(globalEdit || editingVehicleId === vehicle.id) ? (
                         <tr className="bg-slate-900/60">
                           <td colSpan={6} className="px-4 py-4">
                             <form className="space-y-3" onSubmit={(e) => handleUpdateVehicle(e, vehicle.id)}>
