@@ -336,6 +336,41 @@ export default function VehiclesPage() {
     return sorted;
   }, [vehicles, search, sortKey, sortDir]);
 
+  // --- Belge özet sayımları ---
+  const docCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const v of vehicles) {
+      for (const d of (v.documents ?? [])) {
+        const key = (d.doc_type ?? "").toLowerCase();
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [vehicles]);
+
+  const docSummary = useMemo(() => {
+    // Önce tanımlı tipler
+    const known = DOCUMENT_TYPES.map(t => ({
+      value: t.value,
+      label: t.label,
+      count: docCounts[t.value] ?? 0,
+    }));
+    // Bilinmeyen tipler (varsa) -> "Diğer"
+    const knownKeys = new Set(DOCUMENT_TYPES.map(t => t.value));
+    let other = 0;
+    Object.entries(docCounts).forEach(([k, v]) => {
+      if (!knownKeys.has(k)) other += v;
+    });
+    if (other > 0) {
+      known.push({ value: "other", label: "Diğer", count: other });
+    }
+    return known;
+  }, [docCounts]);
+
+  const totalDocuments = useMemo(() => {
+    return Object.values(docCounts).reduce((a, b) => a + b, 0);
+  }, [docCounts]);
+
   const handleFormChange = (field: keyof VehicleFormState, value: string) => {
     setFormState((prev) => ({ ...prev, [field]: value }));
   };
@@ -712,6 +747,26 @@ export default function VehiclesPage() {
           Araçları ekleyin, kaldırın ve yaklaşan belge bitişlerini takip edin. Bakım ve KM girişleri için aşağıdaki formları kullanın.
         </p>
       </header>
+
+      {/* Belge Sayıları Özeti */}
+      <div className="rounded-xl border border-slate-800 bg-slate-900/70 p-4 sm:p-5">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h3 className="text-lg font-semibold text-white">Belge Sayıları</h3>
+          <div className="rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-300">
+            Toplam Belge: <span className="font-semibold text-white">{totalDocuments}</span>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6">
+          {docSummary.map(item => (
+            <div key={item.value} className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-950/70 px-3 py-2">
+              <span className="text-sm text-slate-300">{item.label}</span>
+              <span className="ml-3 rounded-md bg-slate-800 px-2 py-0.5 text-sm font-semibold text-white">
+                {item.count}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
 
       {toast ? (
         <div className="rounded-lg border border-emerald-500/40 bg-emerald-900/40 px-4 py-3 text-sm text-emerald-100">
