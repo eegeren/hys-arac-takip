@@ -101,6 +101,38 @@ DOC_TURKISH_LABELS = {
     "service_general": "Periyodik Bakım",
 }
 
+# Genel amaçlı: API parametrelerinden gelen belge türünü normalize et
+_DOC_ALIASES = {
+    "k belgesi": "k_document",
+    "k": "k_document",
+    "trafik": "traffic_insurance",
+    "trafik_sigortası": "traffic_insurance",
+    "trafik sigortası": "traffic_insurance",
+    "sigorta": "traffic_insurance",
+    "kasko": "kasko",
+    "muayene": "inspection",
+    "inspection": "inspection",
+    "yağ": "service_oil",
+    "yag": "service_oil",
+    "yağ_bakımı": "service_oil",
+    "yag_bakimi": "service_oil",
+    "oil": "service_oil",
+    "oil_service": "service_oil",
+    "servis": "service_general",
+    "service": "service_general",
+    "bakım": "service_general",
+    "bakim": "service_general",
+    "periyodik_bakım": "service_general",
+    "periyodik bakim": "service_general",
+    "maintenance": "service_general",
+}
+
+def normalize_doc_type_input(value: str | None) -> str | None:
+    if value is None:
+        return None
+    key = value.strip().lower().replace(" ", "_")
+    return _DOC_ALIASES.get(key, key)
+
 def tr_doc_label(code: str) -> str:
     """Belge türünü Türkçe etikete çevirir."""
     if not code:
@@ -1018,6 +1050,109 @@ def _stats_summary() -> dict:
         "by_status": by_status,
         "labels_tr": DOC_TURKISH_LABELS,
     }
+
+# Belge kapsama/eksik listesi
+
+def _coverage_by_doc_type(doc_type: str, current_only: bool = False) -> dict:
+    dt_norm = normalize_doc_type_input(doc_type)
+    if not dt_norm or dt_norm not in ALLOWED_DOC_TYPES:
+        raise HTTPException(status_code=400, detail="Geçersiz doc_type")
+
+    with engine.begin() as con:
+        # İlgili belge türü için her araçtaki en güncel kaydı çek
+        latest_docs = con.execute(
+            text(
+                """
+                SELECT DISTINCT ON (vehicle_id)
+                       vehicle_id,
+                       doc_type,
+                       valid_from,
+                       valid_to,
+                       note
+                FROM documents
+                WHERE doc_type = :dt
+                ORDER BY vehicle_id, valid_to DESC
+                """
+            ),
+            {"dt": dt_norm},
+        ).mappings().all()
+
+        # vehicle_id -> latest doc map
+        latest_by_vehicle: dict[int, dict] = {int(r["vehicle_id"]): dict(r) for r in latest_docs}
+
+        # Tüm araçları al
+        vehicles = con.execute(
+            text("SELECT id, plate, make, model, year FROM vehicles ORDER BY plate")
+        ).mappings().all()
+
+    with_list = []
+    without_list = []
+    today = today_local()
+
+    for v in vehicles:
+        vid = int(v["id"])
+        doc = latest_by_vehicle.get(vid)
+        if doc is None:
+            # hiç belge yok
+            without_list.append({
+                "vehicle_id": vid,
+                "plate": v["plate"],
+                "make": v.get("make"),
+                "model": v.get("model"),
+                "year": v.get("year"),
+            })
+            continue
+
+        # Belge var, isteğe göre sadece geçerli olanları süz
+        if current_only and doc["valid_to"] and isinstance(doc["valid_to"], (date, datetime)):
+            valid_to_date = doc["valid_to"].date() if isinstance(doc["valid_to"], datetime) else doc["valid_to"]
+            if valid_to_date < today:
+                # süresi dolmuş; current_only isteniyorsa "yok" listesine at
+                without_list.append({
+                    "vehicle_id": vid,
+                    "plate": v["plate"],
+                    "make": v.get("make"),
+                    "model": v.get("model"),
+                    "year": v.get("year"),
+                })
+                continue
+
+        # with listesine ekle
+        vt = doc.get("valid_to")
+        if isinstance(vt, datetime):
+            vt = vt.date()
+        dl = days_left_for(vt) if isinstance(vt, date) else None
+        with_list.append({
+            "vehicle_id": vid,
+            "plate": v["plate"],
+            "make": v.get("make"),
+            "model": v.get("model"),
+            "year": v.get("year"),
+            "valid_from": doc.get("valid_from").isoformat() if isinstance(doc.get("valid_from"), (date, datetime)) else doc.get("valid_from"),
+            "valid_to": vt.isoformat() if isinstance(vt, date) else vt,
+            "days_left": dl,
+            "status": _document_status(vt) if isinstance(vt, date) else None,
+        })
+
+    # Sıralamalar: with -> en yakın bitiş öne, without -> plaka
+    with_list.sort(key=lambda x: (x["days_left"] if x["days_left"] is not None else 10**9))
+    without_list.sort(key=lambda x: x["plate"]) 
+
+    return {
+        "doc_type": dt_norm,
+        "label_tr": tr_doc_label(dt_norm),
+        "current_only": bool(current_only),
+        "totals": {"with": len(with_list), "without": len(without_list)},
+        "with": with_list,
+        "without": without_list,
+    }
+
+
+@app.get("/api/stats/coverage")
+def stats_coverage_api(doc_type: str = Query(..., description="Belge türü (örn. muayene, trafik_sigortası, k_document, kasko, yağ, servis)"),
+                       current_only: bool = Query(False, description="Sadece geçerli (bugünden sonrası) belgeleri dikkate al")):
+    """Belirli bir belge türü için hangi araçlarda belge VAR/YOK listesini döner."""
+    return _coverage_by_doc_type(doc_type, current_only)
 
 # --- Stats API ---
 @app.get("/api/stats/summary")
