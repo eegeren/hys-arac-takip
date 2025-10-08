@@ -144,6 +144,16 @@ export default function VehiclesPage() {
   const [docSubmitting, setDocSubmitting] = useState(false);
   const [docError, setDocError] = useState<string | null>(null);
   const [docDeleteBusyId, setDocDeleteBusyId] = useState<number | null>(null);
+  // Araç düzenleme durumu
+  const [editingVehicleId, setEditingVehicleId] = useState<number | null>(null);
+  const [vehicleEditForm, setVehicleEditForm] = useState<{ plate: string; make: string; model: string; year: string }>({
+    plate: "",
+    make: "",
+    model: "",
+    year: "",
+  });
+  const [vehicleEditSubmitting, setVehicleEditSubmitting] = useState(false);
+  const [vehicleEditError, setVehicleEditError] = useState<string | null>(null);
 
   // Düzenleme durumu
   const [editingDocId, setEditingDocId] = useState<number | null>(null);
@@ -296,6 +306,72 @@ export default function VehiclesPage() {
 
   const handleDocFormChange = (field: keyof typeof docForm, value: string) => {
     setDocForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const startEditVehicle = (v: Vehicle) => {
+    setVehicleEditError(null);
+    setEditingVehicleId(v.id);
+    setVehicleEditForm({
+      plate: v.plate,
+      make: (v.make ?? ""),
+      model: (v.model ?? ""),
+      year: v.year ? String(v.year) : "",
+    });
+  };
+
+  const handleVehicleEditFormChange = (field: keyof typeof vehicleEditForm, value: string) => {
+    setVehicleEditForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const cancelEditVehicle = () => {
+    setEditingVehicleId(null);
+    setVehicleEditError(null);
+  };
+
+  const handleUpdateVehicle = async (e: FormEvent<HTMLFormElement>, vehicleId: number) => {
+    e.preventDefault();
+    setVehicleEditError(null);
+    if (!adminPassword.trim()) {
+      setVehicleEditError("Şifre gerekli");
+      return;
+    }
+    if (!vehicleEditForm.plate.trim()) {
+      setVehicleEditError("Plaka zorunlu");
+      return;
+    }
+    const yearNum = vehicleEditForm.year ? Number(vehicleEditForm.year) : null;
+    if (vehicleEditForm.year && (Number.isNaN(yearNum!) || (yearNum as number) < 0)) {
+      setVehicleEditError("Yıl bilgisi geçersiz");
+      return;
+    }
+    const payload = {
+      plate: vehicleEditForm.plate.trim().toUpperCase(),
+      make: vehicleEditForm.make.trim() || null,
+      model: vehicleEditForm.model.trim() || null,
+      year: yearNum,
+      admin_password: adminPassword,
+    };
+    try {
+      setVehicleEditSubmitting(true);
+      const res = await fetch(apiUrl(`/api/vehicles/${vehicleId}`), {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const errorPayload = await res.json().catch(() => ({}));
+        throw new Error(errorPayload.detail ?? "Araç güncellenemedi");
+      }
+      setToast("Araç güncellendi");
+      setEditingVehicleId(null);
+      await mutate(apiUrl("/api/vehicles"));
+      await refreshData();
+    } catch (err) {
+      console.error(err);
+      setVehicleEditError((err as Error).message);
+    } finally {
+      setVehicleEditSubmitting(false);
+    }
   };
 
   const handleMntFormChange = (field: keyof typeof mntForm, value: string) => {
@@ -966,13 +1042,23 @@ export default function VehiclesPage() {
                         {vehicle.year ? ` • ${vehicle.year}` : ""}
                       </div>
                     </div>
-                    <button
-                      onClick={() => handleDeleteVehicle(vehicle.id)}
-                      disabled={deleteBusyId === vehicle.id || !isAdmin}
-                      className="shrink-0 rounded-md border border-rose-500/60 px-2.5 py-1 text-[11px] font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {deleteBusyId === vehicle.id ? "Siliniyor..." : "Sil"}
-                    </button>
+                    <div className="flex flex-col gap-1 items-end">
+                      <button
+                        type="button"
+                        onClick={() => startEditVehicle(vehicle)}
+                        disabled={!isAdmin}
+                        className="shrink-0 rounded-md border border-sky-500/60 px-2.5 py-1 text-[11px] font-medium text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        Düzenle
+                      </button>
+                      <button
+                        onClick={() => handleDeleteVehicle(vehicle.id)}
+                        disabled={deleteBusyId === vehicle.id || !isAdmin}
+                        className="shrink-0 rounded-md border border-rose-500/60 px-2.5 py-1 text-[11px] font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deleteBusyId === vehicle.id ? "Siliniyor..." : "Sil"}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-slate-300">
@@ -1115,6 +1201,70 @@ export default function VehiclesPage() {
                       ) : null}
                     </div>
                   ) : null}
+                  {editingVehicleId === vehicle.id ? (
+                    <form className="mt-3 space-y-2 rounded-md border border-slate-600 bg-slate-900/80 p-3" onSubmit={(e) => handleUpdateVehicle(e, vehicle.id)}>
+                      <div className="grid gap-2 grid-cols-2">
+                        <label className="text-[11px] text-slate-300 col-span-2">
+                          Plaka*
+                          <input
+                            value={vehicleEditForm.plate}
+                            onChange={(e) => handleVehicleEditFormChange("plate", e.target.value)}
+                            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
+                            required
+                          />
+                        </label>
+                        <label className="text-[11px] text-slate-300">
+                          Marka
+                          <input
+                            value={vehicleEditForm.make}
+                            onChange={(e) => handleVehicleEditFormChange("make", e.target.value)}
+                            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
+                          />
+                        </label>
+                        <label className="text-[11px] text-slate-300">
+                          Model
+                          <input
+                            value={vehicleEditForm.model}
+                            onChange={(e) => handleVehicleEditFormChange("model", e.target.value)}
+                            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
+                          />
+                        </label>
+                        <label className="text-[11px] text-slate-300">
+                          Yıl
+                          <input
+                            value={vehicleEditForm.year}
+                            onChange={(e) => handleVehicleEditFormChange("year", e.target.value)}
+                            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
+                            inputMode="numeric"
+                          />
+                        </label>
+                      </div>
+                      {vehicleEditError ? (
+                        <p className="rounded-md border border-rose-500/50 bg-rose-900/40 px-2 py-1 text-[11px] text-rose-100">{vehicleEditError}</p>
+                      ) : null}
+                      {!isAdmin ? (
+                        <p className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] text-slate-400">
+                          Düzenlemek için şifre girin.
+                        </p>
+                      ) : null}
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={cancelEditVehicle}
+                          className="rounded-md border border-slate-600 px-3 py-1 text-[11px] text-slate-200"
+                        >
+                          İptal
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={vehicleEditSubmitting || !isAdmin}
+                          className="rounded-md bg-sky-600 px-4 py-1.5 text-[11px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {vehicleEditSubmitting ? "Kaydediliyor..." : "Kaydet"}
+                        </button>
+                      </div>
+                    </form>
+                  ) : null}
                 </article>
               );
             })
@@ -1150,171 +1300,244 @@ export default function VehiclesPage() {
                 filteredVehicles.map((vehicle) => {
                   const lastKm = getLastKmForVehicle(vehicle);
                   return (
-                    <tr key={vehicle.id} className="hover:bg-slate-800/60">
-                      <td className="px-4 py-4 font-semibold text-white">{vehicle.plate}</td>
-                      <td className="px-4 py-4">
-                        <div className="text-white">
-                          {(vehicle.make ?? "").trim() || (vehicle.model ?? "").trim()
-                            ? `${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
-                            : "-"}
-                        </div>
-                        {vehicle.year ? (
-                          <div className="text-xs text-slate-500">{vehicle.year}</div>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-4">
-                        <div
-                          className={`inline-flex min-w-[10rem] flex-col rounded-lg border px-3 py-2 text-xs ${statusClass(
-                            vehicle.next_status ?? (vehicle.days_left != null && vehicle.days_left >= 0
-                              ? vehicle.days_left <= 7
-                                ? "critical"
-                                : vehicle.days_left <= 30
-                                  ? "warning"
-                                  : "ok"
-                              : vehicle.days_left != null && vehicle.days_left < 0
-                                ? "expired"
-                                : "unknown"),
-                            "bg-slate-900 border-slate-700"
-                          )}`}
-                        >
-                          <span className="font-semibold">
-                            {vehicle.next_valid_to
-                              ? new Date(vehicle.next_valid_to).toLocaleDateString("tr-TR")
-                              : "Belge bulunmuyor"}
-                          </span>
-                          <span className="text-white/80">{formatDaysLabel(vehicle.days_left)}</span>
-                          <span className="text-white/60">Toplam belge: {vehicle.document_count}</span>
-                        </div>
-                        {vehicle.documents.length > 0 ? (
-                          <div className="mt-3 space-y-2 text-xs text-white/80">
-                            {vehicle.documents.map((doc) => (
-                              <div
-                                key={`${vehicle.id}-${doc.id}`}
-                                className={`rounded-lg border px-3 py-2 ${statusClass(doc.status, "bg-slate-900/80 border-slate-700")}`}
-                              >
-                                <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-white/70">
-                                  <span>{docTypeLabel(doc.doc_type)}</span>
-                                  <div className="flex items-center gap-2">
-                                    <span>{formatDaysLabel(doc.days_left)}</span>
-                                    <button
-                                      type="button"
-                                      onClick={() => startEditDocument(doc)}
-                                      disabled={!isAdmin}
-                                      className="rounded-md border border-sky-400/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                      Düzenle
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteDocument(doc.id)}
-                                      disabled={docDeleteBusyId === doc.id || !isAdmin}
-                                      className="rounded-md border border-rose-400/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rose-100 transition hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                                    >
-                                      {docDeleteBusyId === doc.id ? "Siliniyor" : "Sil"}
-                                    </button>
-                                  </div>
-                                </div>
-                                <div className="mt-1 flex flex-col gap-1 text-[11px] text-white/80">
-                                  <span>
-                                    Bitiş: {doc.valid_to ? new Date(doc.valid_to).toLocaleDateString("tr-TR") : "-"}
-                                  </span>
-                                  {doc.valid_from ? (
-                                    <span>Başlangıç: {new Date(doc.valid_from).toLocaleDateString("tr-TR")}</span>
-                                  ) : null}
-                                  {doc.note ? <span>Not: {doc.note}</span> : null}
-                                </div>
-                                {editingDocId === doc.id ? (
-                                  <form className="mt-2 space-y-2 rounded-md border border-slate-600 bg-slate-900/80 p-3" onSubmit={(e) => handleUpdateDocument(e, doc.id)}>
-                                    <div className="grid gap-2 md:grid-cols-4">
-                                      <label className="text-[11px] text-slate-300">
-                                        Tür
-                                        <select
-                                          value={editForm.doc_type}
-                                          onChange={(e) => handleEditFormChange("doc_type", e.target.value)}
-                                          className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
-                                        >
-                                          {DOCUMENT_TYPES.map((t) => (
-                                            <option key={t.value} value={t.value}>{t.label}</option>
-                                          ))}
-                                        </select>
-                                      </label>
-                                      <label className="text-[11px] text-slate-300">
-                                        Başlangıç
-                                        <input
-                                          type="date"
-                                          value={editForm.valid_from}
-                                          onChange={(e) => handleEditFormChange("valid_from", e.target.value)}
-                                          className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
-                                        />
-                                      </label>
-                                      <label className="text-[11px] text-slate-300">
-                                        Bitiş*
-                                        <input
-                                          type="date"
-                                          value={editForm.valid_to}
-                                          onChange={(e) => handleEditFormChange("valid_to", e.target.value)}
-                                          className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
-                                          required
-                                        />
-                                      </label>
-                                      <label className="text-[11px] text-slate-300 md:col-span-4">
-                                        Not
-                                        <textarea
-                                          value={editForm.note}
-                                          onChange={(e) => handleEditFormChange("note", e.target.value)}
-                                          className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
-                                          rows={2}
-                                        />
-                                      </label>
-                                    </div>
-                                    {editError ? (
-                                      <p className="rounded-md border border-rose-500/50 bg-rose-900/40 px-2 py-1 text-[11px] text-rose-100">{editError}</p>
-                                    ) : null}
-                                    {!isAdmin ? (
-                                      <p className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] text-slate-400">
-                                        Düzenlemek için şifre girin.
-                                      </p>
-                                    ) : null}
-                                    <div className="flex justify-end gap-2">
+                    <>
+                      <tr key={vehicle.id} className="hover:bg-slate-800/60">
+                        <td className="px-4 py-4 font-semibold text-white">{vehicle.plate}</td>
+                        <td className="px-4 py-4">
+                          <div className="text-white">
+                            {(vehicle.make ?? "").trim() || (vehicle.model ?? "").trim()
+                              ? `${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim()
+                              : "-"}
+                          </div>
+                          {vehicle.year ? (
+                            <div className="text-xs text-slate-500">{vehicle.year}</div>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div
+                            className={`inline-flex min-w-[10rem] flex-col rounded-lg border px-3 py-2 text-xs ${statusClass(
+                              vehicle.next_status ?? (vehicle.days_left != null && vehicle.days_left >= 0
+                                ? vehicle.days_left <= 7
+                                  ? "critical"
+                                  : vehicle.days_left <= 30
+                                    ? "warning"
+                                    : "ok"
+                                : vehicle.days_left != null && vehicle.days_left < 0
+                                  ? "expired"
+                                  : "unknown"),
+                              "bg-slate-900 border-slate-700"
+                            )}`}
+                          >
+                            <span className="font-semibold">
+                              {vehicle.next_valid_to
+                                ? new Date(vehicle.next_valid_to).toLocaleDateString("tr-TR")
+                                : "Belge bulunmuyor"}
+                            </span>
+                            <span className="text-white/80">{formatDaysLabel(vehicle.days_left)}</span>
+                            <span className="text-white/60">Toplam belge: {vehicle.document_count}</span>
+                          </div>
+                          {vehicle.documents.length > 0 ? (
+                            <div className="mt-3 space-y-2 text-xs text-white/80">
+                              {vehicle.documents.map((doc) => (
+                                <div
+                                  key={`${vehicle.id}-${doc.id}`}
+                                  className={`rounded-lg border px-3 py-2 ${statusClass(doc.status, "bg-slate-900/80 border-slate-700")}`}
+                                >
+                                  <div className="flex items-center justify-between text-[11px] uppercase tracking-wide text-white/70">
+                                    <span>{docTypeLabel(doc.doc_type)}</span>
+                                    <div className="flex items-center gap-2">
+                                      <span>{formatDaysLabel(doc.days_left)}</span>
                                       <button
                                         type="button"
-                                        onClick={() => { setEditingDocId(null); setEditError(null); }}
-                                        className="rounded-md border border-slate-600 px-3 py-1 text-[11px] text-slate-200"
+                                        onClick={() => startEditDocument(doc)}
+                                        disabled={!isAdmin}
+                                        className="rounded-md border border-sky-400/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-sky-100 transition hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60"
                                       >
-                                        İptal
+                                        Düzenle
                                       </button>
                                       <button
-                                        type="submit"
-                                        disabled={editSubmitting || !isAdmin}
-                                        className="rounded-md bg-sky-600 px-4 py-1.5 text-[11px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                        onClick={() => handleDeleteDocument(doc.id)}
+                                        disabled={docDeleteBusyId === doc.id || !isAdmin}
+                                        className="rounded-md border border-rose-400/60 px-2 py-0.5 text-[10px] uppercase tracking-wide text-rose-100 transition hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-60"
                                       >
-                                        {editSubmitting ? "Kaydediliyor..." : "Kaydet"}
+                                        {docDeleteBusyId === doc.id ? "Siliniyor" : "Sil"}
                                       </button>
                                     </div>
-                                  </form>
-                                ) : null}
+                                  </div>
+                                  <div className="mt-1 flex flex-col gap-1 text-[11px] text-white/80">
+                                    <span>
+                                      Bitiş: {doc.valid_to ? new Date(doc.valid_to).toLocaleDateString("tr-TR") : "-"}
+                                    </span>
+                                    {doc.valid_from ? (
+                                      <span>Başlangıç: {new Date(doc.valid_from).toLocaleDateString("tr-TR")}</span>
+                                    ) : null}
+                                    {doc.note ? <span>Not: {doc.note}</span> : null}
+                                  </div>
+                                  {editingDocId === doc.id ? (
+                                    <form className="mt-2 space-y-2 rounded-md border border-slate-600 bg-slate-900/80 p-3" onSubmit={(e) => handleUpdateDocument(e, doc.id)}>
+                                      <div className="grid gap-2 md:grid-cols-4">
+                                        <label className="text-[11px] text-slate-300">
+                                          Tür
+                                          <select
+                                            value={editForm.doc_type}
+                                            onChange={(e) => handleEditFormChange("doc_type", e.target.value)}
+                                            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
+                                          >
+                                            {DOCUMENT_TYPES.map((t) => (
+                                              <option key={t.value} value={t.value}>{t.label}</option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                        <label className="text-[11px] text-slate-300">
+                                          Başlangıç
+                                          <input
+                                            type="date"
+                                            value={editForm.valid_from}
+                                            onChange={(e) => handleEditFormChange("valid_from", e.target.value)}
+                                            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
+                                          />
+                                        </label>
+                                        <label className="text-[11px] text-slate-300">
+                                          Bitiş*
+                                          <input
+                                            type="date"
+                                            value={editForm.valid_to}
+                                            onChange={(e) => handleEditFormChange("valid_to", e.target.value)}
+                                            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
+                                            required
+                                          />
+                                        </label>
+                                        <label className="text-[11px] text-slate-300 md:col-span-4">
+                                          Not
+                                          <textarea
+                                            value={editForm.note}
+                                            onChange={(e) => handleEditFormChange("note", e.target.value)}
+                                            className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-white"
+                                            rows={2}
+                                          />
+                                        </label>
+                                      </div>
+                                      {editError ? (
+                                        <p className="rounded-md border border-rose-500/50 bg-rose-900/40 px-2 py-1 text-[11px] text-rose-100">{editError}</p>
+                                      ) : null}
+                                      {!isAdmin ? (
+                                        <p className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1 text-[10px] text-slate-400">
+                                          Düzenlemek için şifre girin.
+                                        </p>
+                                      ) : null}
+                                      <div className="flex justify-end gap-2">
+                                        <button
+                                          type="button"
+                                          onClick={() => { setEditingDocId(null); setEditError(null); }}
+                                          className="rounded-md border border-slate-600 px-3 py-1 text-[11px] text-slate-200"
+                                        >
+                                          İptal
+                                        </button>
+                                        <button
+                                          type="submit"
+                                          disabled={editSubmitting || !isAdmin}
+                                          className="rounded-md bg-sky-600 px-4 py-1.5 text-[11px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                          {editSubmitting ? "Kaydediliyor..." : "Kaydet"}
+                                        </button>
+                                      </div>
+                                    </form>
+                                  ) : null}
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-300">
+                          {lastKm != null ? `${lastKm.toLocaleString("tr-TR")} km` : "-"}
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-300">
+                          {vehicle.created_at
+                            ? new Date(vehicle.created_at).toLocaleString("tr-TR")
+                            : "-"}
+                        </td>
+                        <td className="px-4 py-4 text-right">
+                          <button
+                            type="button"
+                            onClick={() => startEditVehicle(vehicle)}
+                            disabled={!isAdmin}
+                            className="mr-2 rounded-lg border border-sky-500/60 px-3 py-1 text-xs font-medium text-sky-200 transition hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            Düzenle
+                          </button>
+                          <button
+                            onClick={() => handleDeleteVehicle(vehicle.id)}
+                            disabled={deleteBusyId === vehicle.id || !isAdmin}
+                            className="rounded-lg border border-rose-500/60 px-3 py-1 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {deleteBusyId === vehicle.id ? "Siliniyor..." : "Sil"}
+                          </button>
+                        </td>
+                      </tr>
+                      {editingVehicleId === vehicle.id ? (
+                        <tr className="bg-slate-900/60">
+                          <td colSpan={6} className="px-4 py-4">
+                            <form className="space-y-3" onSubmit={(e) => handleUpdateVehicle(e, vehicle.id)}>
+                              <div className="grid gap-3 md:grid-cols-4">
+                                <label className="text-xs text-slate-300">
+                                  Plaka*
+                                  <input
+                                    value={vehicleEditForm.plate}
+                                    onChange={(e) => handleVehicleEditFormChange("plate", e.target.value)}
+                                    className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+                                    required
+                                  />
+                                </label>
+                                <label className="text-xs text-slate-300">
+                                  Marka
+                                  <input
+                                    value={vehicleEditForm.make}
+                                    onChange={(e) => handleVehicleEditFormChange("make", e.target.value)}
+                                    className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+                                  />
+                                </label>
+                                <label className="text-xs text-slate-300">
+                                  Model
+                                  <input
+                                    value={vehicleEditForm.model}
+                                    onChange={(e) => handleVehicleEditFormChange("model", e.target.value)}
+                                    className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+                                  />
+                                </label>
+                                <label className="text-xs text-slate-300">
+                                  Yıl
+                                  <input
+                                    value={vehicleEditForm.year}
+                                    onChange={(e) => handleVehicleEditFormChange("year", e.target.value)}
+                                    className="mt-1 w-full rounded-md border border-slate-700 bg-slate-950 px-2 py-1.5 text-sm text-white"
+                                    inputMode="numeric"
+                                  />
+                                </label>
                               </div>
-                            ))}
-                          </div>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-4 text-sm text-slate-300">
-                        {lastKm != null ? `${lastKm.toLocaleString("tr-TR")} km` : "-"}
-                      </td>
-                      <td className="px-4 py-4 text-sm text-slate-300">
-                        {vehicle.created_at
-                          ? new Date(vehicle.created_at).toLocaleString("tr-TR")
-                          : "-"}
-                      </td>
-                      <td className="px-4 py-4 text-right">
-                        <button
-                          onClick={() => handleDeleteVehicle(vehicle.id)}
-                          disabled={deleteBusyId === vehicle.id || !isAdmin}
-                          className="rounded-lg border border-rose-500/60 px-3 py-1 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {deleteBusyId === vehicle.id ? "Siliniyor..." : "Sil"}
-                        </button>
-                      </td>
-                    </tr>
+                              {vehicleEditError ? (
+                                <p className="rounded-md border border-rose-500/50 bg-rose-900/40 px-3 py-2 text-sm text-rose-100">{vehicleEditError}</p>
+                              ) : null}
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={cancelEditVehicle}
+                                  className="rounded-md border border-slate-600 px-3 py-1.5 text-sm text-slate-200"
+                                >
+                                  İptal
+                                </button>
+                                <button
+                                  type="submit"
+                                  disabled={vehicleEditSubmitting || !isAdmin}
+                                  className="rounded-md bg-sky-600 px-4 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  {vehicleEditSubmitting ? "Kaydediliyor..." : "Kaydet"}
+                                </button>
+                              </div>
+                            </form>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </>
                   );
                 })
               )}

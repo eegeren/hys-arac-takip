@@ -3,7 +3,7 @@ from datetime import date, timedelta, datetime, timezone
 from fastapi import FastAPI, Query, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
 from zoneinfo import ZoneInfo
 from typing import Mapping
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -48,7 +48,7 @@ PANEL_URL = os.getenv("PANEL_URL","https://hys-arac-takip-1.onrender.com")
 VEHICLE_ADMIN_PASSWORD = os.getenv("VEHICLE_ADMIN_PASSWORD", "hys123")
 
 engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
-app = FastAPI(title="HYS Fleet API", version="1.2.0")
+app = FastAPI(title="HYS Fleet API", version="1.3.0")
 
 allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "https://hys-arac-takip-1.onrender.com").split(",")
 app.add_middleware(
@@ -357,20 +357,41 @@ class DocumentUpdateRequest(BaseModel):
         }
         return aliases.get(value, value)
 
+# --- Sağlık & Uptime (GET + HEAD + meta) ---
+def _scheduler_enabled() -> bool:
+    return os.getenv("ENABLE_SCHEDULER", "1") == "1"
+
+def _health_payload() -> dict:
+    return {
+        "ok": True,
+        "time": datetime.now().isoformat(),
+        "mail_provider": MAIL_PROVIDER,
+        "version": "1.3.0",
+        "scheduler_enabled": _scheduler_enabled(),
+    }
+
 @app.get("/healthz")
 def health():
-    return {"ok": True, "time": datetime.now().isoformat(), "mail_provider": MAIL_PROVIDER}
+    return _health_payload()
 
-# Extra health aliases for uptime monitors
+# Extra health aliases for uptime monitors (GET + HEAD)
 @app.get("/health")
 def health_root():
     """Alias of /healthz for providers expecting /health."""
-    return health()
+    return _health_payload()
+
+@app.head("/health")
+def health_root_head():
+    return Response(status_code=200)
 
 @app.get("/api/health")
 def api_health_alias():
     """Alias of /api/healthz for convenience."""
-    return health()
+    return _health_payload()
+
+@app.head("/api/health")
+def api_health_head():
+    return Response(status_code=200)
 
 # ---- Core functions (no direct non-/api routes) ----
 
@@ -947,7 +968,7 @@ def spa_vehicles(rest: str = ""):
 # --- API aliases under /api (backward compatible) ---
 @app.get("/api/healthz")
 def health_api():
-    return health()
+    return _health_payload()
 
 @app.get("/api/debug/vehicles_probe")
 def debug_vehicles_probe(q: str | None = None):
@@ -1002,14 +1023,6 @@ def documents_upcoming_api(days: int = Query(60, ge=1, le=365)):
 @app.post("/api/debug/run_notifications")
 def debug_run_notifications_api(
     admin_password: str = Query(..., description="Bildirim çalıştırma şifresi"),
-    vehicle_id: int | None = Query(None, description="Sadece bu araç için tetikle (opsiyonel)"),
+    vehicle_id: int | None = Query(None, description="Sadece bu araç için tetikle (opsiyonel)")
 ):
     return debug_run_notifications(admin_password, vehicle_id)
-
-@app.get("/api/debug/send_test")
-def debug_send_test_api(to: str = Query(..., description="Alıcı e-posta")):
-    return debug_send_test(to)
-
-# --- Mount static after API routes (so /api/* takes precedence) ---
-if os.path.isdir(STATIC_DIR):
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
