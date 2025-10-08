@@ -40,12 +40,15 @@ THRESHOLDS = [
     .split(",")
     if x.strip() != ""
 ]
-ALLOWED_DOC_TYPES = {"inspection", "k_document", "traffic_insurance", "kasko"}
+ALLOWED_DOC_TYPES = {
+    "inspection", "k_document", "traffic_insurance", "kasko",
+    "service_oil", "service_general"
+}
 PANEL_URL = os.getenv("PANEL_URL","https://hys-arac-takip-1.onrender.com")
 VEHICLE_ADMIN_PASSWORD = os.getenv("VEHICLE_ADMIN_PASSWORD", "hys123")
 
 engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
-app = FastAPI(title="HYS Fleet API", version="1.1.0")
+app = FastAPI(title="HYS Fleet API", version="1.2.0")
 
 allow_origins = os.getenv("CORS_ALLOW_ORIGINS", "https://hys-arac-takip-1.onrender.com").split(",")
 app.add_middleware(
@@ -94,6 +97,8 @@ DOC_TURKISH_LABELS = {
     "k_document": "K Belgesi",
     "traffic_insurance": "Trafik Sigortası",
     "kasko": "Kasko",
+    "service_oil": "Yağ Bakımı",
+    "service_general": "Periyodik Bakım",
 }
 
 def tr_doc_label(code: str) -> str:
@@ -116,7 +121,7 @@ def render_email(
     model: str | None = None,
     year: int | None = None,
 ) -> str:
-    """Şık, bilgili bir HTML e‑posta gövdesi üretir."""
+    """Şık, bilgili bir HTML e-posta gövdesi üretir."""
     # Normalize dates to strings (YYYY-MM-DD)
     def _d(v):
         if v is None:
@@ -159,7 +164,7 @@ def render_email(
           <a href="{panel_url}" style="background:#22c55e;color:#00140a;text-decoration:none;padding:10px 16px;border-radius:10px;font-weight:600;display:inline-block">Web panelde görüntüle</a>
         </div>
 
-        <p style="margin-top:16px;color:#93a4b9;font-size:12px;">Bu e‑posta otomatik olarak gönderildi. Yanıtlamanıza gerek yoktur.</p>
+        <p style="margin-top:16px;color:#93a4b9;font-size:12px;">Bu e-posta otomatik olarak gönderildi. Yanıtlamanıza gerek yoktur.</p>
       </div>
     </div>
     """
@@ -259,6 +264,15 @@ class VehicleIn(BaseModel):
 class VehicleCreateRequest(VehicleIn):
     admin_password: str
 
+# --- Yeni: Araç güncelleme için iskelet ---
+class VehicleUpdateRequest(BaseModel):
+    plate: str | None = None
+    make: str | None = None
+    model: str | None = None
+    year: int | None = None
+    responsible_email: str | None = None
+    admin_password: str
+
 class DocumentCreateRequest(BaseModel):
     doc_type: str
     valid_from: date | None = None
@@ -273,11 +287,25 @@ class DocumentCreateRequest(BaseModel):
             "k belgesi": "k_document",
             "k": "k_document",
             "trafik": "traffic_insurance",
+            "trafik_sigortası": "traffic_insurance",
             "trafik sigortası": "traffic_insurance",
             "sigorta": "traffic_insurance",
             "kasko": "kasko",
             "muayene": "inspection",
             "inspection": "inspection",
+            "yağ": "service_oil",
+            "yag": "service_oil",
+            "yağ_bakımı": "service_oil",
+            "yag_bakimi": "service_oil",
+            "oil": "service_oil",
+            "oil_service": "service_oil",
+            "servis": "service_general",
+            "service": "service_general",
+            "bakım": "service_general",
+            "bakim": "service_general",
+            "periyodik_bakım": "service_general",
+            "periyodik bakim": "service_general",
+            "maintenance": "service_general",
         }
         return aliases.get(value, value)
 
@@ -289,6 +317,45 @@ class DocumentResponse(BaseModel):
     note: str | None
     days_left: int | None
     status: str
+
+# --- Yeni: Belge güncelleme için iskelet ---
+class DocumentUpdateRequest(BaseModel):
+    doc_type: str | None = None
+    valid_from: date | None = None
+    valid_to: date | None = None
+    note: str | None = None
+    admin_password: str
+
+    @property
+    def normalized_doc_type(self) -> str | None:
+        if self.doc_type is None:
+            return None
+        value = self.doc_type.strip().lower().replace(" ", "_")
+        aliases = {
+            "k belgesi": "k_document",
+            "k": "k_document",
+            "trafik": "traffic_insurance",
+            "trafik_sigortası": "traffic_insurance",
+            "trafik sigortası": "traffic_insurance",
+            "sigorta": "traffic_insurance",
+            "kasko": "kasko",
+            "muayene": "inspection",
+            "inspection": "inspection",
+            "yağ": "service_oil",
+            "yag": "service_oil",
+            "yağ_bakımı": "service_oil",
+            "yag_bakimi": "service_oil",
+            "oil": "service_oil",
+            "oil_service": "service_oil",
+            "servis": "service_general",
+            "service": "service_general",
+            "bakım": "service_general",
+            "bakim": "service_general",
+            "periyodik_bakım": "service_general",
+            "periyodik bakim": "service_general",
+            "maintenance": "service_general",
+        }
+        return aliases.get(value, value)
 
 @app.get("/healthz")
 def health():
@@ -434,6 +501,75 @@ def create_vehicle(v: VehicleCreateRequest):
 
     return vehicle_data
 
+# --- Yeni: Araç güncelle ---
+def update_vehicle(vehicle_id: int, body: VehicleUpdateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+
+    fields = {}
+    if body.plate is not None:
+        fields["plate"] = body.plate.strip().upper()
+    if body.make is not None:
+        fields["make"] = body.make.strip() or None
+    if body.model is not None:
+        fields["model"] = body.model.strip() or None
+    if body.year is not None:
+        if not isinstance(body.year, int):
+            raise HTTPException(status_code=400, detail="Yıl sayısal olmalı")
+        fields["year"] = body.year
+    if body.responsible_email is not None:
+        fields["responsible_email"] = body.responsible_email.strip() or None
+
+    if not fields:
+        with engine.begin() as con:
+            row = con.execute(
+                text("SELECT id, plate, make, model, year, responsible_email, created_at FROM vehicles WHERE id=:id"),
+                {"id": vehicle_id}
+            ).mappings().first()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Araç bulunamadı")
+            return {
+                "id": row["id"],
+                "plate": row["plate"],
+                "make": row["make"],
+                "model": row["model"],
+                "year": row["year"],
+                "responsible_email": row["responsible_email"],
+                "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            }
+
+    set_sql = ", ".join(f"{k} = :{k}" for k in fields.keys())
+    params = dict(fields)
+    params["id"] = vehicle_id
+
+    with engine.begin() as con:
+        try:
+            row = con.execute(
+                text(f"""
+                    UPDATE vehicles
+                    SET {set_sql}
+                    WHERE id = :id
+                    RETURNING id, plate, make, model, year, responsible_email, created_at
+                """),
+                params,
+            ).mappings().first()
+        except IntegrityError as exc:
+            # duplicate plate vb.
+            raise HTTPException(status_code=409, detail="Bu plaka başka bir araçta kayıtlı") from exc
+
+        if row is None:
+            raise HTTPException(status_code=404, detail="Araç bulunamadı")
+
+    return {
+        "id": row["id"],
+        "plate": row["plate"],
+        "make": row["make"],
+        "model": row["model"],
+        "year": row["year"],
+        "responsible_email": row["responsible_email"],
+        "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+    }
+
 def delete_vehicle(vehicle_id: int, admin_password: str = Query(..., description="Araç silme şifresi")):
     if admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
@@ -481,7 +617,7 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
 
     normal_type = payload.normalized_doc_type
     if normal_type not in ALLOWED_DOC_TYPES:
-        raise HTTPException(status_code=400, detail="Belge türü yalnızca inspection, k_document, traffic_insurance veya kasko olabilir")
+        raise HTTPException(status_code=400, detail="Belge türü yalnızca inspection, k_document, traffic_insurance, kasko, service_oil veya service_general olabilir")
 
     doc_data = payload.model_dump(exclude={"admin_password"})
     doc_data["vehicle_id"] = vehicle_id
@@ -562,6 +698,57 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
             print(f"Anlık uyarı maili gönderilemedi: {exc}")
 
     return doc_response
+
+# --- Yeni: Belge güncelle ---
+def update_document(document_id: int, body: DocumentUpdateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+
+    fields = {}
+    if body.doc_type is not None:
+        nd = body.normalized_doc_type
+        if nd not in ALLOWED_DOC_TYPES:
+            raise HTTPException(status_code=400, detail="Belge türü geçersiz")
+        fields["doc_type"] = nd
+    if body.valid_from is not None:
+        fields["valid_from"] = body.valid_from
+    if body.valid_to is not None:
+        fields["valid_to"] = body.valid_to
+    if body.note is not None:
+        fields["note"] = body.note.strip() if body.note else None
+
+    if not fields:
+        with engine.begin() as con:
+            row = con.execute(
+                text("""
+                    SELECT id, vehicle_id, doc_type, valid_from, valid_to, note
+                    FROM documents WHERE id=:id
+                """),
+                {"id": document_id},
+            ).mappings().first()
+            if row is None:
+                raise HTTPException(status_code=404, detail="Belge bulunamadı")
+            return _make_document_response(row)
+
+    set_sql = ", ".join(f"{k} = :{k}" for k in fields.keys())
+    params = dict(fields)
+    params["id"] = document_id
+
+    with engine.begin() as con:
+        row = con.execute(
+            text(f"""
+                UPDATE documents
+                SET {set_sql}
+                WHERE id = :id
+                RETURNING id, vehicle_id, doc_type, valid_from, valid_to, note
+            """),
+            params,
+        ).mappings().first()
+
+    if row is None:
+        raise HTTPException(status_code=404, detail="Belge bulunamadı")
+
+    return _make_document_response(row)
 
 # ---- Convenience endpoint: POST /documents (body içinde vehicle_id) ----
 class DocumentCreateWithVehicle(DocumentCreateRequest):
@@ -778,6 +965,11 @@ def list_vehicles_api(q: str | None = None):
 def create_vehicle_api(v: VehicleCreateRequest):
     return create_vehicle(v)
 
+# Yeni: Araç güncelle
+@app.put("/api/vehicles/{vehicle_id}")
+def update_vehicle_api(vehicle_id: int, body: VehicleUpdateRequest):
+    return update_vehicle(vehicle_id, body)
+
 @app.delete("/api/vehicles/{vehicle_id}", status_code=204)
 def delete_vehicle_api(vehicle_id: int, admin_password: str = Query(..., description="Araç silme şifresi")):
     return delete_vehicle(vehicle_id, admin_password)
@@ -789,6 +981,11 @@ def create_document_api(vehicle_id: int, payload: DocumentCreateRequest):
 @app.post("/api/documents", status_code=201)
 def create_document_with_body_api(body: DocumentCreateWithVehicle):
     return create_document_with_body(body)
+
+# Yeni: Belge güncelle
+@app.put("/api/documents/{document_id}")
+def update_document_api(document_id: int, body: DocumentUpdateRequest):
+    return update_document(document_id, body)
 
 @app.delete("/api/documents/{document_id}", status_code=204)
 def delete_document_api(document_id: int, admin_password: str = Query(..., description="Belge silme şifresi")):
