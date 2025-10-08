@@ -1023,6 +1023,14 @@ def documents_upcoming_api(days: int = Query(60, ge=1, le=365)):
 @app.post("/api/debug/run_notifications")
 def debug_run_notifications_api(
     admin_password: str = Query(..., description="Bildirim çalıştırma şifresi"),
-    vehicle_id: int | None = Query(None, description="Sadece bu araç için tetikle (opsiyonel)")
+    vehicle_id: int | None = Query(None, description="Sadece bu araç için tetikle (opsiyonel)"),
 ):
     return debug_run_notifications(admin_password, vehicle_id)
+
+@app.get("/api/debug/send_test")
+def debug_send_test_api(to: str = Query(..., description="Alıcı e-posta")):
+    return debug_send_test(to)
+
+# --- Mount static after API routes (so /api/* takes precedence) ---
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
