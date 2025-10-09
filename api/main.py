@@ -1345,6 +1345,30 @@ def update_expense(expense_id: int, body: ExpenseUpdateRequest):
             )
         return _fetch_expense(con, expense_id)
 
+def delete_damage(damage_id: int, admin_password: str):
+    if admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    with engine.begin() as con:
+        deleted = con.execute(
+            text("DELETE FROM damages WHERE id = :id RETURNING id"),
+            {"id": damage_id},
+        ).mappings().first()
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="Hasar kaydı bulunamadı")
+    return Response(status_code=204)
+
+def delete_expense(expense_id: int, admin_password: str):
+    if admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    with engine.begin() as con:
+        deleted = con.execute(
+            text("DELETE FROM expenses WHERE id = :id RETURNING id"),
+            {"id": expense_id},
+        ).mappings().first()
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="Masraf kaydı bulunamadı")
+    return Response(status_code=204)
+
 def list_expenses():
     with engine.begin() as con:
         rows = con.execute(
@@ -1803,6 +1827,10 @@ def create_damage_api(body: DamageCreateRequest):
 def update_damage_api(damage_id: int, body: DamageUpdateRequest):
     return update_damage(damage_id, body)
 
+@app.delete("/api/damages/{damage_id}", status_code=204)
+def delete_damage_api(damage_id: int, admin_password: str = Query(..., description="Hasar silme şifresi")):
+    return delete_damage(damage_id, admin_password)
+
 @app.get("/api/expenses")
 def expenses_api():
     return list_expenses()
@@ -1814,6 +1842,10 @@ def create_expense_api(body: ExpenseCreateRequest):
 @app.put("/api/expenses/{expense_id}")
 def update_expense_api(expense_id: int, body: ExpenseUpdateRequest):
     return update_expense(expense_id, body)
+
+@app.delete("/api/expenses/{expense_id}", status_code=204)
+def delete_expense_api(expense_id: int, admin_password: str = Query(..., description="Masraf silme şifresi")):
+    return delete_expense(expense_id, admin_password)
 
 @app.post("/api/debug/run_notifications")
 def debug_run_notifications_api(

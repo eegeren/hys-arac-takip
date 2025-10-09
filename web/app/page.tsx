@@ -382,6 +382,7 @@ export default function DashboardPage() {
   const [damageListLoading, setDamageListLoading] = useState(true);
   const [damageListError, setDamageListError] = useState<string | null>(null);
   const [editingDamageId, setEditingDamageId] = useState<number | null>(null);
+  const [damageDeleteBusyId, setDamageDeleteBusyId] = useState<number | null>(null);
 
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(() => createInitialExpenseFormState());
   const [expenseLog, setExpenseLog] = useState<ExpenseEntry[]>([]);
@@ -392,6 +393,7 @@ export default function DashboardPage() {
   const [expenseListLoading, setExpenseListLoading] = useState(true);
   const [expenseListError, setExpenseListError] = useState<string | null>(null);
   const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
+  const [expenseDeleteBusyId, setExpenseDeleteBusyId] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -714,6 +716,68 @@ export default function DashboardPage() {
     setExpenseFileInputKey(Date.now());
   };
 
+  const handleDeleteDamage = async (damageId: number) => {
+    if (!adminPassword.trim()) {
+      setDamageError("Silme işlemi için yönetici şifresi gerekli.");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm("Bu hasar kaydını silmek istediğinize emin misiniz?");
+      if (!confirmed) return;
+    }
+    setDamageError(null);
+    setDamageMessage(null);
+    setDamageDeleteBusyId(damageId);
+    try {
+      const res = await fetch(
+        apiUrl(`/api/damages/${damageId}?admin_password=${encodeURIComponent(adminPassword.trim())}`),
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      if (editingDamageId === damageId) {
+        cancelDamageEdit();
+      }
+      await loadDamages();
+      flashMessage(setDamageMessage, "Hasar kaydı silindi");
+    } catch (err) {
+      console.error(err);
+      setDamageError((err as Error).message || "Hasar kaydı silinemedi");
+    } finally {
+      setDamageDeleteBusyId(null);
+    }
+  };
+
+  const handleDeleteExpense = async (expenseId: number) => {
+    if (!adminPassword.trim()) {
+      setExpenseError("Silme işlemi için yönetici şifresi gerekli.");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm("Bu masraf kaydını silmek istediğinize emin misiniz?");
+      if (!confirmed) return;
+    }
+    setExpenseError(null);
+    setExpenseMessage(null);
+    setExpenseDeleteBusyId(expenseId);
+    try {
+      const res = await fetch(
+        apiUrl(`/api/expenses/${expenseId}?admin_password=${encodeURIComponent(adminPassword.trim())}`),
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      if (editingExpenseId === expenseId) {
+        cancelExpenseEdit();
+      }
+      await loadExpenses();
+      flashMessage(setExpenseMessage, "Masraf kaydı silindi");
+    } catch (err) {
+      console.error(err);
+      setExpenseError((err as Error).message || "Masraf kaydı silinemedi");
+    } finally {
+      setExpenseDeleteBusyId(null);
+    }
+  };
+
   const handleDamageSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDamageError(null);
@@ -775,17 +839,18 @@ export default function DashboardPage() {
             admin_password: adminPassword.trim(),
           }),
         });
-        if (!res.ok) throw new Error(await extractErrorMessage(res));
-        await res.json();
-        await loadDamages();
-        flashMessage(setDamageMessage, "Hasar kaydı eklendi");
-      }
-      setDamageListError(null);
-      setDamageForm(createInitialDamageFormState());
-      setDamageFileInputKey(Date.now());
-    } catch (err) {
-      console.error(err);
-      setDamageError((err as Error).message || "Hasar kaydedilemedi");
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      await res.json();
+      await loadDamages();
+      flashMessage(setDamageMessage, "Hasar kaydı eklendi");
+    }
+    setDamageListError(null);
+    setDamageForm(createInitialDamageFormState());
+    setEditingDamageId(null);
+    setDamageFileInputKey(Date.now());
+  } catch (err) {
+    console.error(err);
+    setDamageError((err as Error).message || "Hasar kaydedilemedi");
     } finally {
       setDamageBusy(false);
     }
@@ -858,17 +923,18 @@ export default function DashboardPage() {
             admin_password: adminPassword.trim(),
           }),
         });
-        if (!res.ok) throw new Error(await extractErrorMessage(res));
-        await res.json();
-        await loadExpenses();
-        flashMessage(setExpenseMessage, "Masraf kaydı eklendi");
-      }
-      setExpenseListError(null);
-      setExpenseForm(createInitialExpenseFormState());
-      setExpenseFileInputKey(Date.now());
-    } catch (err) {
-      console.error(err);
-      setExpenseError((err as Error).message || "Masraf kaydedilemedi");
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      await res.json();
+      await loadExpenses();
+      flashMessage(setExpenseMessage, "Masraf kaydı eklendi");
+    }
+    setExpenseListError(null);
+    setExpenseForm(createInitialExpenseFormState());
+    setEditingExpenseId(null);
+    setExpenseFileInputKey(Date.now());
+  } catch (err) {
+    console.error(err);
+    setExpenseError((err as Error).message || "Masraf kaydedilemedi");
     } finally {
       setExpenseBusy(false);
     }
@@ -1378,6 +1444,14 @@ export default function DashboardPage() {
                           >
                             Düzenle
                           </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDamage(entry.id)}
+                            disabled={damageDeleteBusyId === entry.id}
+                            className="rounded border border-rose-400/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-rose-100 transition hover:border-rose-300/80 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:border-slate-600/60 disabled:bg-slate-800 disabled:text-slate-300"
+                          >
+                            {damageDeleteBusyId === entry.id ? "Siliniyor..." : "Sil"}
+                          </button>
                         </div>
                       </div>
                       <div className="mt-1 flex items-start justify-between gap-3">
@@ -1583,6 +1657,14 @@ export default function DashboardPage() {
                             className="rounded border border-slate-600/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:border-emerald-300/60 hover:bg-emerald-500/20 hover:text-emerald-100"
                           >
                             Düzenle
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteExpense(entry.id)}
+                            disabled={expenseDeleteBusyId === entry.id}
+                            className="rounded border border-rose-400/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-rose-100 transition hover:border-rose-300/80 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:border-slate-600/60 disabled:bg-slate-800 disabled:text-slate-300"
+                          >
+                            {expenseDeleteBusyId === entry.id ? "Siliniyor..." : "Sil"}
                           </button>
                         </div>
                         <span className="inline-flex items-center rounded-full border border-indigo-400/40 bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.25em] text-indigo-100">
