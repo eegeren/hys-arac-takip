@@ -1,6 +1,5 @@
 "use client";
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { apiUrl } from "../lib/api";
 
@@ -51,10 +50,6 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>("vehicles");
 
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-
   useEffect(() => {
     const controller = new AbortController();
 
@@ -86,29 +81,30 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    const tabParam = searchParams.get("tab");
-    if (isTabId(tabParam) && tabParam !== activeTab) {
-      setActiveTab(tabParam);
-    }
-    if (!tabParam && activeTab !== "vehicles") {
-      setActiveTab("vehicles");
-    }
-  }, [searchParams, activeTab]);
+    if (typeof window === "undefined") return;
+    const syncTabFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      setActiveTab(isTabId(tabParam) ? tabParam : "vehicles");
+    };
+
+    syncTabFromUrl();
+    window.addEventListener("popstate", syncTabFromUrl);
+    return () => window.removeEventListener("popstate", syncTabFromUrl);
+  }, []);
 
   const setTab = (nextTab: TabId) => {
     setActiveTab(nextTab);
-    if (!router || !pathname) return;
+    if (typeof window === "undefined") return;
 
-    const params = new URLSearchParams(searchParams.toString());
+    const url = new URL(window.location.href);
     if (nextTab === "vehicles") {
-      params.delete("tab");
+      url.searchParams.delete("tab");
     } else {
-      params.set("tab", nextTab);
+      url.searchParams.set("tab", nextTab);
     }
 
-    const queryString = params.toString();
-    const next = queryString ? `${pathname}?${queryString}` : pathname;
-    router.replace(next, { scroll: false });
+    window.history.replaceState(null, "", url.toString());
   };
 
   const groupedByPlate = useMemo(() => {
