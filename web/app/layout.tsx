@@ -1,19 +1,10 @@
 import "./globals.css";
-import Link from "next/link";
 import type { ReactNode } from "react";
 
 export const metadata = {
   title: "HYS Fleet",
   description: "Belge takibi ve araç yönetimi paneli",
 };
-
-const navItems = [
-  { href: "/?tab=vehicles", label: "Araçlar" },
-  { href: "/?tab=vehicle-create", label: "Araç Ekle" },
-  { href: "/?tab=damages", label: "Hasarlar" },
-  { href: "/?tab=expenses", label: "Masraflar" },
-  { href: "/?tab=documents", label: "Belgeler" },
-];
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
@@ -27,17 +18,6 @@ export default function RootLayout({ children }: { children: ReactNode }) {
                 60 gün içerisinde süresi dolacak belgeler ve araç yönetimi paneli
               </p>
             </div>
-            <nav className="flex items-center gap-2 rounded-full border border-slate-800 bg-slate-900/70 p-1 text-sm">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="rounded-full px-4 py-2 text-slate-300 transition hover:bg-slate-800 hover:text-white"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </nav>
           </header>
           <main className="flex-1">{children}</main>
         </div>
