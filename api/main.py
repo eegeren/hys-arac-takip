@@ -46,6 +46,7 @@ ALLOWED_DOC_TYPES = {
 }
 PANEL_URL = os.getenv("PANEL_URL","https://hys-arac-takip-1.onrender.com")
 VEHICLE_ADMIN_PASSWORD = os.getenv("VEHICLE_ADMIN_PASSWORD", "hys123")
+DEFAULT_RESPONSIBLE_EMAIL = os.getenv("DEFAULT_RESPONSIBLE_EMAIL", "yusufege.eren@hysavm.com")
 DAMAGE_SEVERITIES_ALLOWED = {"hafif", "orta", "ağır"}
 DAMAGE_SEVERITY_DISPLAY = {"hafif": "Hafif", "orta": "Orta", "ağır": "Ağır"}
 ATTACHMENT_MAX_BYTES = int(os.getenv("ATTACHMENT_MAX_BYTES", str(5 * 1024 * 1024)))
@@ -105,6 +106,7 @@ def _ensure_tables():
     );
     CREATE INDEX IF NOT EXISTS idx_damages_plate ON damages(plate);
     CREATE INDEX IF NOT EXISTS idx_expenses_plate ON expenses(plate);
+    ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS responsible_person TEXT;
     """
     with engine.begin() as con:
         for statement in ddl.strip().split(";"):
@@ -113,6 +115,14 @@ def _ensure_tables():
                 con.execute(text(stmt))
 
 _ensure_tables()
+
+with engine.begin() as _con:
+    _con.execute(
+        text(
+            "UPDATE vehicles SET responsible_email = :email WHERE responsible_email IS NULL OR responsible_email <> :email"
+        ),
+        {"email": DEFAULT_RESPONSIBLE_EMAIL},
+    )
 
 # SPA fallback: /api dışındaki 404'larda index.html döndür
 @app.exception_handler(StarletteHTTPException)
@@ -360,6 +370,7 @@ class VehicleIn(BaseModel):
     make: str | None = None
     model: str | None = None
     year: int | None = None
+    responsible_person: str | None = None
     responsible_email: str | None = None
 
 class VehicleCreateRequest(VehicleIn):
@@ -371,6 +382,7 @@ class VehicleUpdateRequest(BaseModel):
     make: str | None = None
     model: str | None = None
     year: int | None = None
+    responsible_person: str | None = None
     responsible_email: str | None = None
     admin_password: str
 
@@ -551,6 +563,7 @@ def list_vehicles(q: str | None = None):
           v.model,
           v.year,
           v.responsible_email,
+          v.responsible_person,
           v.created_at
         FROM vehicles v
     """
@@ -590,6 +603,7 @@ def list_vehicles(q: str | None = None):
             {
                 "id": doc["id"],
                 "doc_type": doc["doc_type"],
+                "doc_label": tr_doc_label(doc["doc_type"]),
                 "valid_from": doc["valid_from"].isoformat() if doc["valid_from"] else None,
                 "valid_to": doc["valid_to"].isoformat() if doc["valid_to"] else None,
                 "note": doc["note"],
@@ -611,6 +625,7 @@ def list_vehicles(q: str | None = None):
                 "model": row["model"],
                 "year": row["year"],
                 "responsible_email": row["responsible_email"],
+                "responsible_person": row.get("responsible_person"),
                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
                 "documents": docs,
                 "document_count": len(docs),
@@ -627,15 +642,19 @@ def create_vehicle(v: VehicleCreateRequest):
         raise HTTPException(status_code=403, detail="Şifre hatalı")
 
     payload = v.model_dump(exclude={"admin_password"})
+    payload["plate"] = payload["plate"].strip().upper()
+    payload["responsible_person"] = (payload.get("responsible_person") or "").strip() or None
+    payload["responsible_email"] = DEFAULT_RESPONSIBLE_EMAIL
+
     with engine.begin() as con:
         try:
             row = (
                 con.execute(
                     text(
                         """
-                        INSERT INTO vehicles(plate, make, model, year, responsible_email)
-                        VALUES (:plate, :make, :model, :year, :responsible_email)
-                        RETURNING id, plate, make, model, year, responsible_email, created_at
+                        INSERT INTO vehicles(plate, make, model, year, responsible_email, responsible_person)
+                        VALUES (:plate, :make, :model, :year, :responsible_email, :responsible_person)
+                        RETURNING id, plate, make, model, year, responsible_email, responsible_person, created_at
                         """
                     ),
                     payload,
@@ -651,6 +670,7 @@ def create_vehicle(v: VehicleCreateRequest):
         "model": row["model"],
         "year": row["year"],
         "responsible_email": row["responsible_email"],
+        "responsible_person": row.get("responsible_person"),
         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
     }
 
@@ -662,7 +682,7 @@ def create_vehicle(v: VehicleCreateRequest):
         panel_url=f"{PANEL_URL}/vehicles",
     )
     try:
-        send_mail(vehicle_data.get('responsible_email') or MAIL_TO, f"Yeni Araç Eklendi: {row['plate']}", mail_body)
+        send_mail(DEFAULT_RESPONSIBLE_EMAIL or MAIL_TO, f"Yeni Araç Eklendi: {row['plate']}", mail_body)
     except Exception as exc:
         # Loglamak adına konsola yaz
         print(f"Araç ekleme maili gönderilemedi: {exc}")
@@ -685,13 +705,13 @@ def update_vehicle(vehicle_id: int, body: VehicleUpdateRequest):
         if not isinstance(body.year, int):
             raise HTTPException(status_code=400, detail="Yıl sayısal olmalı")
         fields["year"] = body.year
-    if body.responsible_email is not None:
-        fields["responsible_email"] = body.responsible_email.strip() or None
+    if body.responsible_person is not None:
+        fields["responsible_person"] = body.responsible_person.strip() or None
 
     if not fields:
         with engine.begin() as con:
             row = con.execute(
-                text("SELECT id, plate, make, model, year, responsible_email, created_at FROM vehicles WHERE id=:id"),
+                text("SELECT id, plate, make, model, year, responsible_email, responsible_person, created_at FROM vehicles WHERE id=:id"),
                 {"id": vehicle_id}
             ).mappings().first()
             if row is None:
@@ -703,11 +723,15 @@ def update_vehicle(vehicle_id: int, body: VehicleUpdateRequest):
                 "model": row["model"],
                 "year": row["year"],
                 "responsible_email": row["responsible_email"],
+                "responsible_person": row.get("responsible_person"),
                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             }
 
-    set_sql = ", ".join(f"{k} = :{k}" for k in fields.keys())
-    params = dict(fields)
+    fields_update = dict(fields)
+    fields_update["responsible_email"] = DEFAULT_RESPONSIBLE_EMAIL
+
+    set_sql = ", ".join(f"{k} = :{k}" for k in fields_update.keys())
+    params = dict(fields_update)
     params["id"] = vehicle_id
 
     with engine.begin() as con:
@@ -717,7 +741,7 @@ def update_vehicle(vehicle_id: int, body: VehicleUpdateRequest):
                     UPDATE vehicles
                     SET {set_sql}
                     WHERE id = :id
-                    RETURNING id, plate, make, model, year, responsible_email, created_at
+                    RETURNING id, plate, make, model, year, responsible_email, responsible_person, created_at
                 """),
                 params,
             ).mappings().first()
@@ -735,6 +759,7 @@ def update_vehicle(vehicle_id: int, body: VehicleUpdateRequest):
         "model": row["model"],
         "year": row["year"],
         "responsible_email": row["responsible_email"],
+        "responsible_person": row.get("responsible_person"),
         "created_at": row["created_at"].isoformat() if row["created_at"] else None,
     }
 
@@ -761,7 +786,7 @@ def delete_vehicle(vehicle_id: int, admin_password: str = Query(..., description
         panel_url=f"{PANEL_URL}/vehicles",
     )
     try:
-        send_mail(MAIL_TO, f"Araç Silindi: {summary}", mail_body)
+        send_mail(DEFAULT_RESPONSIBLE_EMAIL or MAIL_TO, f"Araç Silindi: {summary}", mail_body)
     except Exception as exc:
         print(f"Araç silme maili gönderilemedi: {exc}")
     return Response(status_code=204)
@@ -793,7 +818,8 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
 
     with engine.begin() as con:
         vehicle = con.execute(
-            text("SELECT plate, make, model, year, responsible_email FROM vehicles WHERE id = :id"), {"id": vehicle_id}
+            text("SELECT plate, make, model, year, responsible_email, responsible_person FROM vehicles WHERE id = :id"),
+            {"id": vehicle_id},
         ).mappings().first()
         if vehicle is None:
             raise HTTPException(status_code=404, detail="Araç bulunamadı")
@@ -828,7 +854,7 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
 
     # Bilgi maili
     try:
-        send_mail(vehicle.get("responsible_email") or MAIL_TO, f"Belge Eklendi: {vehicle['plate']} - {tr_doc_label(normal_type)}", mail_html)
+        send_mail(DEFAULT_RESPONSIBLE_EMAIL or MAIL_TO, f"Belge Eklendi: {vehicle['plate']} - {tr_doc_label(normal_type)}", mail_html)
     except Exception as exc:
         print(f"Belge ekleme maili gönderilemedi: {exc}")
 
@@ -836,7 +862,7 @@ def create_document(vehicle_id: int, payload: DocumentCreateRequest):
     if days_left is not None and days_left in THRESHOLDS:
         try:
             send_mail(
-                vehicle.get("responsible_email") or MAIL_TO,
+                DEFAULT_RESPONSIBLE_EMAIL or MAIL_TO,
                 f"Araç Belge Uyarısı: {vehicle['plate']} - {tr_doc_label(normal_type)} ({days_left}g)",
                 render_email(
                     plate=vehicle["plate"],
@@ -976,7 +1002,7 @@ def delete_document(document_id: int, admin_password: str = Query(..., descripti
         f"<p>Panel: <a href='{PANEL_URL}/vehicles?plate={plate}'>{PANEL_URL}/vehicles</a></p>"
     )
     try:
-        send_mail(MAIL_TO or (vehicle.get('responsible_email') if isinstance(vehicle, dict) else ''), f"Belge Silindi: {plate} - {row['doc_type']}", mail_html)
+        send_mail(DEFAULT_RESPONSIBLE_EMAIL or MAIL_TO, f"Belge Silindi: {plate} - {row['doc_type']}", mail_html)
     except Exception as exc:
         print(f"Belge silme maili gönderilemedi: {exc}")
 
@@ -986,7 +1012,7 @@ def expiring(days: int = Query(30, ge=1, le=365)):
     today = today_local()
     until = today + timedelta(days=days)
     sql = """
-      select d.id as doc_id, v.plate, d.doc_type, d.valid_from, d.valid_to, d.note, v.responsible_email,
+      select d.id as doc_id, v.plate, d.doc_type, d.valid_from, d.valid_to, d.note, v.responsible_email, v.responsible_person,
              (d.valid_to - :t) as days_left
       from documents d
       join vehicles v on v.id=d.vehicle_id
@@ -1003,10 +1029,12 @@ def expiring(days: int = Query(30, ge=1, le=365)):
                 "doc_id": row["doc_id"],
                 "plate": row["plate"],
                 "doc_type": row["doc_type"],
+                "doc_label": tr_doc_label(row["doc_type"]),
                 "valid_from": row["valid_from"].isoformat() if row["valid_from"] else None,
                 "valid_to": row["valid_to"].isoformat(),
                 "note": row["note"],
                 "responsible_email": row["responsible_email"],
+                "responsible_person": row.get("responsible_person"),
                 "days_left": int(row["days_left"]) if row["days_left"] is not None else None,
                 "status": _document_status(row["valid_to"]),
             }

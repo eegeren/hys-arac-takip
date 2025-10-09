@@ -9,17 +9,20 @@ type UpcomingDocument = {
   doc_id: number;
   plate: string;
   doc_type: string;
+  doc_label?: string;
   valid_from: string | null;
   valid_to: string;
   note?: string | null;
   days_left: number | null;
   status: string;
   responsible_email?: string | null;
+  responsible_person?: string | null;
 };
 
 type VehicleDocument = {
   id: number;
   doc_type: string;
+  doc_label?: string;
   valid_from: string | null;
   valid_to: string | null;
   note?: string | null;
@@ -34,6 +37,7 @@ type Vehicle = {
   model?: string | null;
   year?: number | null;
   responsible_email?: string | null;
+  responsible_person?: string | null;
   created_at?: string | null;
   document_count: number;
   next_valid_to?: string | null;
@@ -49,7 +53,7 @@ type VehicleFormState = {
   make: string;
   model: string;
   year: string;
-  responsible_email: string;
+  responsible_person: string;
 };
 
 type DocumentFormState = {
@@ -163,13 +167,28 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: "documents", label: "Belgeler" },
 ];
 
+const DOC_TYPE_LABELS: Record<string, string> = {
+  inspection: "Muayene",
+  muayene: "Muayene",
+  k_document: "K Belgesi",
+  k: "K Belgesi",
+  k_belgesi: "K Belgesi",
+  traffic_insurance: "Trafik Sigortası",
+  insurance: "Trafik Sigortası",
+  trafik_sigortası: "Trafik Sigortası",
+  trafik_sigortasi: "Trafik Sigortası",
+  kasko: "Kasko",
+  service_oil: "Yağ Bakımı",
+  service_general: "Genel Bakım",
+};
+
 const DOCUMENT_TYPES = [
-  { value: "inspection", label: "Muayene" },
-  { value: "k_document", label: "K Belgesi" },
-  { value: "traffic_insurance", label: "Trafik Sigortası" },
-  { value: "kasko", label: "Kasko" },
-  { value: "service_oil", label: "Yağ Bakımı" },
-  { value: "service_general", label: "Genel Bakım" },
+  { value: "inspection", label: DOC_TYPE_LABELS.inspection },
+  { value: "k_document", label: DOC_TYPE_LABELS.k_document },
+  { value: "traffic_insurance", label: DOC_TYPE_LABELS.traffic_insurance },
+  { value: "kasko", label: DOC_TYPE_LABELS.kasko },
+  { value: "service_oil", label: DOC_TYPE_LABELS.service_oil },
+  { value: "service_general", label: DOC_TYPE_LABELS.service_general },
 ];
 
 const DAMAGE_SEVERITIES: DamageSeverity[] = ["Hafif", "Orta", "Ağır"];
@@ -256,6 +275,14 @@ const readFileAsDataUrl = (file: File) =>
 
 const toDataUrl = (mime: string | null, base64Content: string) =>
   `data:${mime ?? "application/octet-stream"};base64,${base64Content}`;
+
+const docTypeLabel = (value: string) => {
+  if (!value) return "Belge";
+  const key = value.toLowerCase().replace(/\s+/g, "_");
+  return DOC_TYPE_LABELS[key] ?? value.replace(/_/g, " ");
+};
+
+const DEFAULT_RESPONSIBLE_EMAIL = "yusufege.eren@hysavm.com";
 
 const adaptDamageResponse = (item: DamageApiResponse): DamageEntry => {
   const severity = DAMAGE_SEVERITIES.includes(item.severity as DamageSeverity)
@@ -345,7 +372,7 @@ export default function DashboardPage() {
     make: "",
     model: "",
     year: "",
-    responsible_email: "",
+    responsible_person: "",
   });
   const [vehicleFormBusy, setVehicleFormBusy] = useState(false);
   const [vehicleFormError, setVehicleFormError] = useState<string | null>(null);
@@ -526,6 +553,7 @@ export default function DashboardPage() {
         latestStatus: string;
         nextDocument?: UpcomingDocument;
         documents: UpcomingDocument[];
+        responsible_person?: string | null;
       }
     >();
 
@@ -534,9 +562,13 @@ export default function DashboardPage() {
         latestStatus: doc.status,
         nextDocument: undefined,
         documents: [],
+        responsible_person: doc.responsible_person ?? null,
       };
 
       plateInfo.documents.push(doc);
+      if (!plateInfo.responsible_person && doc.responsible_person) {
+        plateInfo.responsible_person = doc.responsible_person;
+      }
       const candidate = plateInfo.nextDocument;
       if (!candidate) {
         plateInfo.nextDocument = doc;
@@ -564,6 +596,7 @@ export default function DashboardPage() {
         latestStatus: info.latestStatus,
         nextDocument: info.nextDocument,
         documents: info.documents,
+        responsible_person: info.responsible_person ?? null,
       }))
       .sort((a, b) => a.plate.localeCompare(b.plate, "tr"));
   }, [docs]);
@@ -579,6 +612,10 @@ export default function DashboardPage() {
       setVehicleFormError("Plaka alanı zorunlu.");
       return;
     }
+    if (!vehicleForm.responsible_person.trim()) {
+      setVehicleFormError("Sorumlu kişi alanı zorunlu.");
+      return;
+    }
 
     setVehicleFormBusy(true);
     try {
@@ -587,7 +624,7 @@ export default function DashboardPage() {
         make: vehicleForm.make.trim() || null,
         model: vehicleForm.model.trim() || null,
         year: vehicleForm.year.trim() ? Number(vehicleForm.year.trim()) : null,
-        responsible_email: vehicleForm.responsible_email.trim() || null,
+        responsible_person: vehicleForm.responsible_person.trim() || null,
         admin_password: adminPassword.trim(),
       };
       const res = await fetch(apiUrl("/api/vehicles"), {
@@ -601,7 +638,7 @@ export default function DashboardPage() {
         make: "",
         model: "",
         year: "",
-        responsible_email: "",
+        responsible_person: "",
       });
       flashMessage(setVehicleFormMessage, "Araç kaydedildi");
       await loadVehicles();
@@ -1029,7 +1066,10 @@ export default function DashboardPage() {
                           {vehicle.next_status ? STATUS_LABELS[vehicle.next_status] ?? vehicle.next_status : "Belge Yok"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-300">{vehicle.responsible_email ?? "-"}</td>
+                      <td className="px-4 py-3 text-xs text-slate-300">
+                        <div>{vehicle.responsible_person ?? "Tanımlı değil"}</div>
+                        <div className="text-[10px] text-slate-500">{DEFAULT_RESPONSIBLE_EMAIL}</div>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1065,7 +1105,7 @@ export default function DashboardPage() {
                           <div>
                             <span className="text-xs uppercase tracking-wide text-white/70">Sıradaki Belge</span>
                             <h3 className="text-lg font-semibold capitalize text-white">
-                              {vehicle.nextDocument.doc_type.replace(/_/g, " ")}
+                              {vehicle.nextDocument.doc_label ?? docTypeLabel(vehicle.nextDocument.doc_type)}
                             </h3>
                           </div>
                           <div className="flex items-center justify-between text-sm text-white/80">
@@ -1076,6 +1116,10 @@ export default function DashboardPage() {
                             <span>Kalan Gün</span>
                             <span>{vehicle.nextDocument.days_left ?? "-"}</span>
                           </div>
+                          <div className="text-xs text-white/70">
+                            Sorumlu Kişi: {vehicle.responsible_person ?? "Tanımlı değil"}
+                          </div>
+                          <div className="text-[10px] text-white/60">E-posta: {DEFAULT_RESPONSIBLE_EMAIL}</div>
                         </>
                       ) : (
                         <p className="text-sm text-white/70">Takvimde yaklaşan belge bulunmuyor.</p>
@@ -1137,14 +1181,16 @@ export default function DashboardPage() {
                 value={vehicleForm.year}
                 onChange={(event) => setVehicleForm((prev) => ({ ...prev, year: event.target.value }))}
               />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Sorumlu E-posta</label>
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Sorumlu Kişi</label>
               <input
                 className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                placeholder="ornek@firma.com"
-                type="email"
-                value={vehicleForm.responsible_email}
-                onChange={(event) => setVehicleForm((prev) => ({ ...prev, responsible_email: event.target.value }))}
+                placeholder="Örn. Ayşe Yılmaz"
+                value={vehicleForm.responsible_person}
+                onChange={(event) => setVehicleForm((prev) => ({ ...prev, responsible_person: event.target.value }))}
               />
+              <p className="text-[10px] text-slate-500">
+                Bildirim e-postaları otomatik olarak {DEFAULT_RESPONSIBLE_EMAIL} adresine gönderilir.
+              </p>
               <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
               <input
                 className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
@@ -1863,7 +1909,7 @@ export default function DashboardPage() {
                   <div>
                     <span className="text-sm uppercase tracking-wide text-white/70">Belge Türü</span>
                     <h3 className="text-xl font-semibold capitalize text-white">
-                      {doc.doc_type.replace(/_/g, " ")}
+                      {doc.doc_label ?? docTypeLabel(doc.doc_type)}
                     </h3>
                   </div>
                   {doc.valid_from ? (
@@ -1882,8 +1928,9 @@ export default function DashboardPage() {
                   </div>
                   {doc.note ? <p className="text-xs text-white/70">Not: {doc.note}</p> : null}
                   <div className="text-xs text-white/70">
-                    Sorumlu: {doc.responsible_email ?? "Tanımlı değil"}
+                    Sorumlu Kişi: {doc.responsible_person ?? "Tanımlı değil"}
                   </div>
+                  <div className="text-xs text-white/60">E-posta: {DEFAULT_RESPONSIBLE_EMAIL}</div>
                 </div>
               </article>
             ))
