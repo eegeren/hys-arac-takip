@@ -770,36 +770,46 @@ def update_document(document_id: int, body: DocumentUpdateRequest):
     if body.note is not None:
         fields["note"] = body.note.strip() if body.note else None
 
-    if not fields:
-        with engine.begin() as con:
-            row = con.execute(
-                text("""
-                    SELECT id, vehicle_id, doc_type, valid_from, valid_to, note
-                    FROM documents WHERE id=:id
-                """),
-                {"id": document_id},
-            ).mappings().first()
-            if row is None:
-                raise HTTPException(status_code=404, detail="Belge bulunamadı")
-            return _make_document_response(row)
-
-    set_sql = ", ".join(f"{k} = :{k}" for k in fields.keys())
+    set_sql = ", ".join(f"{k} = :{k}" for k in fields.keys()) if fields else ""
     params = dict(fields)
     params["id"] = document_id
 
     with engine.begin() as con:
-        row = con.execute(
-            text(f"""
-                UPDATE documents
-                SET {set_sql}
-                WHERE id = :id
-                RETURNING id, vehicle_id, doc_type, valid_from, valid_to, note
+        existing = con.execute(
+            text("""
+                SELECT id, vehicle_id, doc_type, valid_from, valid_to, note
+                FROM documents WHERE id = :id
             """),
-            params,
+            {"id": document_id},
         ).mappings().first()
 
-    if row is None:
-        raise HTTPException(status_code=404, detail="Belge bulunamadı")
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Belge bulunamadı")
+
+        if not fields:
+            row = existing
+        else:
+            row = con.execute(
+                text(f"""
+                    UPDATE documents
+                    SET {set_sql}
+                    WHERE id = :id
+                    RETURNING id, vehicle_id, doc_type, valid_from, valid_to, note
+                """),
+                params,
+            ).mappings().first()
+
+            if row is None:
+                raise HTTPException(status_code=404, detail="Belge bulunamadı")
+
+            if (
+                ("valid_to" in fields and existing["valid_to"] != row["valid_to"])
+                or ("doc_type" in fields and existing["doc_type"] != row["doc_type"])
+            ):
+                con.execute(
+                    text("DELETE FROM notifications_log WHERE document_id = :id"),
+                    {"id": document_id},
+                )
 
     return _make_document_response(row)
 
