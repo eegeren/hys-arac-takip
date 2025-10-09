@@ -65,6 +65,55 @@ app.add_middleware(
 # --- Static web (Next.js export) ---
 STATIC_DIR = os.getenv("STATIC_DIR", "/app/webout")
 
+def _ensure_tables():
+    ddl = """
+    CREATE TABLE IF NOT EXISTS damages (
+      id SERIAL PRIMARY KEY,
+      vehicle_id INT REFERENCES vehicles(id) ON DELETE SET NULL,
+      plate TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      severity TEXT NOT NULL,
+      occurred_at DATE NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS damage_attachments (
+      id SERIAL PRIMARY KEY,
+      damage_id INT REFERENCES damages(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      mime_type TEXT,
+      content BYTEA NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS expenses (
+      id SERIAL PRIMARY KEY,
+      vehicle_id INT REFERENCES vehicles(id) ON DELETE SET NULL,
+      plate TEXT NOT NULL,
+      category TEXT NOT NULL,
+      amount NUMERIC(12,2) NOT NULL,
+      description TEXT,
+      expense_date DATE NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS expense_attachments (
+      id SERIAL PRIMARY KEY,
+      expense_id INT REFERENCES expenses(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      mime_type TEXT,
+      content BYTEA NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_damages_plate ON damages(plate);
+    CREATE INDEX IF NOT EXISTS idx_expenses_plate ON expenses(plate);
+    """
+    with engine.begin() as con:
+        for statement in ddl.strip().split(";"):
+            stmt = statement.strip()
+            if stmt:
+                con.execute(text(stmt))
+
+_ensure_tables()
+
 # SPA fallback: /api dışındaki 404'larda index.html döndür
 @app.exception_handler(StarletteHTTPException)
 async def spa_fallback(request: Request, exc: StarletteHTTPException):
