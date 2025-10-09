@@ -63,14 +63,15 @@ type DocumentFormState = {
 type DamageSeverity = "Hafif" | "Orta" | "Ağır";
 
 type DamageAttachment = {
-  id: string;
+  id: number;
   name: string;
+  mimeType: string | null;
   preview: string;
-  size: number;
+  size: number | null;
 };
 
 type DamageEntry = {
-  id: string;
+  id: number;
   plate: string;
   title: string;
   description: string;
@@ -81,14 +82,15 @@ type DamageEntry = {
 };
 
 type ExpenseAttachment = {
-  id: string;
+  id: number;
   name: string;
+  mimeType: string | null;
   preview: string;
-  size: number;
+  size: number | null;
 };
 
 type ExpenseEntry = {
-  id: string;
+  id: number;
   plate: string;
   category: string;
   amount: number;
@@ -113,6 +115,42 @@ type ExpenseFormState = {
   description: string;
   createdAt: string;
   files: File[];
+};
+
+type DamageApiResponse = {
+  id: number;
+  vehicle_id: number | null;
+  plate: string;
+  title: string;
+  description: string | null;
+  severity: string;
+  occurred_at: string | null;
+  created_at: string | null;
+  attachments: Array<{
+    id: number;
+    file_name: string;
+    mime_type: string | null;
+    size_bytes: number | null;
+    content_base64: string;
+  }>;
+};
+
+type ExpenseApiResponse = {
+  id: number;
+  vehicle_id: number | null;
+  plate: string;
+  category: string;
+  amount: number;
+  description: string | null;
+  expense_date: string | null;
+  created_at: string | null;
+  attachments: Array<{
+    id: number;
+    file_name: string;
+    mime_type: string | null;
+    size_bytes: number | null;
+    content_base64: string;
+  }>;
 };
 
 const tabs: Array<{ id: TabId; label: string }> = [
@@ -188,11 +226,6 @@ const formatDaysLabel = (days?: number | null) => {
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
 
-const createId = () =>
-  typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
 const readFileAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -200,6 +233,47 @@ const readFileAsDataUrl = (file: File) =>
     reader.onerror = () => reject(reader.error);
     reader.readAsDataURL(file);
   });
+
+const toDataUrl = (mime: string | null, base64Content: string) =>
+  `data:${mime ?? "application/octet-stream"};base64,${base64Content}`;
+
+const adaptDamageResponse = (item: DamageApiResponse): DamageEntry => {
+  const severity = DAMAGE_SEVERITIES.includes(item.severity as DamageSeverity)
+    ? (item.severity as DamageSeverity)
+    : "Hafif";
+  return {
+    id: item.id,
+    plate: item.plate,
+    title: item.title,
+    description: item.description ?? "",
+    severity,
+    occurredAt: item.occurred_at ?? item.created_at ?? new Date().toISOString(),
+    createdAt: item.created_at ?? item.occurred_at ?? new Date().toISOString(),
+    attachments: item.attachments.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.file_name,
+      mimeType: attachment.mime_type ?? null,
+      preview: toDataUrl(attachment.mime_type, attachment.content_base64),
+      size: attachment.size_bytes ?? null,
+    })),
+  };
+};
+
+const adaptExpenseResponse = (item: ExpenseApiResponse): ExpenseEntry => ({
+  id: item.id,
+  plate: item.plate,
+  category: item.category,
+  amount: typeof item.amount === "number" ? item.amount : Number(item.amount ?? 0),
+  description: item.description ?? "",
+  createdAt: item.created_at ?? item.expense_date ?? new Date().toISOString(),
+  attachments: item.attachments.map((attachment) => ({
+    id: attachment.id,
+    name: attachment.file_name,
+    mimeType: attachment.mime_type ?? null,
+    preview: toDataUrl(attachment.mime_type, attachment.content_base64),
+    size: attachment.size_bytes ?? null,
+  })),
+});
 
 const extractErrorMessage = async (res: Response) => {
   const contentType = res.headers.get("content-type") ?? "";
@@ -286,6 +360,9 @@ export default function DashboardPage() {
   const [damageError, setDamageError] = useState<string | null>(null);
   const [damageMessage, setDamageMessage] = useState<string | null>(null);
   const [damageBusy, setDamageBusy] = useState(false);
+  const [damageFileInputKey, setDamageFileInputKey] = useState(() => Date.now());
+  const [damageListLoading, setDamageListLoading] = useState(true);
+  const [damageListError, setDamageListError] = useState<string | null>(null);
 
   const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(() => ({
     plate: "",
@@ -299,6 +376,9 @@ export default function DashboardPage() {
   const [expenseError, setExpenseError] = useState<string | null>(null);
   const [expenseMessage, setExpenseMessage] = useState<string | null>(null);
   const [expenseBusy, setExpenseBusy] = useState(false);
+  const [expenseFileInputKey, setExpenseFileInputKey] = useState(() => Date.now());
+  const [expenseListLoading, setExpenseListLoading] = useState(true);
+  const [expenseListError, setExpenseListError] = useState<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -376,6 +456,38 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const loadDamages = useCallback(async () => {
+    setDamageListLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/damages"));
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      const data = (await res.json()) as DamageApiResponse[];
+      setDamageLog(data.map(adaptDamageResponse));
+      setDamageListError(null);
+    } catch (err) {
+      console.error(err);
+      setDamageListError((err as Error).message || "Hasar kayıtları çekilirken hata oluştu");
+    } finally {
+      setDamageListLoading(false);
+    }
+  }, []);
+
+  const loadExpenses = useCallback(async () => {
+    setExpenseListLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/expenses"));
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      const data = (await res.json()) as ExpenseApiResponse[];
+      setExpenseLog(data.map(adaptExpenseResponse));
+      setExpenseListError(null);
+    } catch (err) {
+      console.error(err);
+      setExpenseListError((err as Error).message || "Masraf kayıtları çekilirken hata oluştu");
+    } finally {
+      setExpenseListLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadDocs();
   }, [loadDocs]);
@@ -383,6 +495,14 @@ export default function DashboardPage() {
   useEffect(() => {
     loadVehicles();
   }, [loadVehicles]);
+
+  useEffect(() => {
+    loadDamages();
+  }, [loadDamages]);
+
+  useEffect(() => {
+    loadExpenses();
+  }, [loadExpenses]);
 
   const groupedByPlate = useMemo(() => {
     const byPlate = new Map<
@@ -532,6 +652,10 @@ export default function DashboardPage() {
   const handleDamageSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDamageError(null);
+    if (!adminPassword.trim()) {
+      setDamageError("Yönetici şifresi gerekli.");
+      return;
+    }
     if (!damageForm.plate.trim() || !damageForm.title.trim()) {
       setDamageError("Plaka ve başlık alanları zorunlu.");
       return;
@@ -539,25 +663,36 @@ export default function DashboardPage() {
 
     setDamageBusy(true);
     try {
-      const attachments = await Promise.all(
-        damageForm.files.map(async (file) => ({
-          id: createId(),
-          name: file.name,
-          preview: await readFileAsDataUrl(file),
-          size: file.size,
-        })),
+      const attachmentPayloads = await Promise.all(
+        damageForm.files.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file);
+          const [meta, base64Content] = dataUrl.split(",");
+          const mimeMatch = meta?.match(/^data:(.*?);base64$/);
+          return {
+            file_name: file.name,
+            mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
+            content_base64: base64Content ?? "",
+          };
+        }),
       );
-      const entry: DamageEntry = {
-        id: createId(),
+      const payload = {
         plate: damageForm.plate.trim().toUpperCase(),
         title: damageForm.title.trim(),
-        description: damageForm.description.trim(),
+        description: damageForm.description.trim() || null,
         severity: damageForm.severity,
-        occurredAt: damageForm.occurredAt,
-        createdAt: new Date().toISOString(),
-        attachments,
+        occurred_at: damageForm.occurredAt,
+        attachments: attachmentPayloads,
+        admin_password: adminPassword.trim(),
       };
-      setDamageLog((prev) => [entry, ...prev]);
+      const res = await fetch(apiUrl("/api/damages"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      await res.json();
+      await loadDamages();
+      setDamageListError(null);
       setDamageForm({
         plate: "",
         title: "",
@@ -566,10 +701,11 @@ export default function DashboardPage() {
         occurredAt: damageForm.occurredAt,
         files: [],
       });
+      setDamageFileInputKey(Date.now());
       flashMessage(setDamageMessage, "Hasar kaydı eklendi");
     } catch (err) {
       console.error(err);
-      setDamageError("Görseller işlenirken hata oluştu");
+      setDamageError((err as Error).message || "Hasar kaydedilemedi");
     } finally {
       setDamageBusy(false);
     }
@@ -578,6 +714,10 @@ export default function DashboardPage() {
   const handleExpenseSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setExpenseError(null);
+    if (!adminPassword.trim()) {
+      setExpenseError("Yönetici şifresi gerekli.");
+      return;
+    }
     if (!expenseForm.plate.trim()) {
       setExpenseError("Plaka alanı zorunlu.");
       return;
@@ -590,24 +730,36 @@ export default function DashboardPage() {
 
     setExpenseBusy(true);
     try {
-      const attachments = await Promise.all(
-        expenseForm.files.map(async (file) => ({
-          id: createId(),
-          name: file.name,
-          preview: await readFileAsDataUrl(file),
-          size: file.size,
-        })),
+      const attachmentsPayload = await Promise.all(
+        expenseForm.files.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file);
+          const [meta, base64Content] = dataUrl.split(",");
+          const mimeMatch = meta?.match(/^data:(.*?);base64$/);
+          return {
+            file_name: file.name,
+            mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
+            content_base64: base64Content ?? "",
+          };
+        }),
       );
-      const entry: ExpenseEntry = {
-        id: createId(),
+      const payload = {
         plate: expenseForm.plate.trim().toUpperCase(),
         category: expenseForm.category,
         amount: parsedAmount,
-        description: expenseForm.description.trim(),
-        createdAt: expenseForm.createdAt,
-        attachments,
+        description: expenseForm.description.trim() || null,
+        expense_date: expenseForm.createdAt,
+        attachments: attachmentsPayload,
+        admin_password: adminPassword.trim(),
       };
-      setExpenseLog((prev) => [entry, ...prev]);
+      const res = await fetch(apiUrl("/api/expenses"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      await res.json();
+      await loadExpenses();
+      setExpenseListError(null);
       setExpenseForm({
         plate: "",
         category: expenseForm.category,
@@ -616,10 +768,11 @@ export default function DashboardPage() {
         createdAt: expenseForm.createdAt,
         files: [],
       });
+      setExpenseFileInputKey(Date.now());
       flashMessage(setExpenseMessage, "Masraf kaydı eklendi");
     } catch (err) {
       console.error(err);
-      setExpenseError("Belgeler işlenirken hata oluştu");
+      setExpenseError((err as Error).message || "Masraf kaydedilemedi");
     } finally {
       setExpenseBusy(false);
     }
@@ -1034,6 +1187,7 @@ export default function DashboardPage() {
               />
               <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Fotoğraf / Görsel</label>
               <input
+                key={damageFileInputKey}
                 type="file"
                 accept="image/*"
                 multiple
@@ -1042,6 +1196,14 @@ export default function DashboardPage() {
                   const files = event.target.files ? Array.from(event.target.files) : [];
                   setDamageForm((prev) => ({ ...prev, files }));
                 }}
+              />
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+              <input
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-rose-400 focus:outline-none"
+                placeholder="Yönetici şifresi"
+                type="password"
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
               />
               {damageError ? (
                 <p className="mt-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
@@ -1069,7 +1231,15 @@ export default function DashboardPage() {
                   {damageLog.length} kayıt
                 </span>
               </div>
-              {damageLog.length === 0 ? (
+              {damageListError ? (
+                <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">
+                  {damageListError}
+                </p>
+              ) : damageListLoading ? (
+                <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
+                  Hasar kayıtları yükleniyor...
+                </p>
+              ) : damageLog.length === 0 ? (
                 <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
                   Henüz hasar kaydı eklemediniz.
                 </p>
@@ -1189,6 +1359,7 @@ export default function DashboardPage() {
               />
               <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Fiş / Fatura</label>
               <input
+                key={expenseFileInputKey}
                 type="file"
                 accept="image/*,.pdf"
                 multiple
@@ -1197,6 +1368,14 @@ export default function DashboardPage() {
                   const files = event.target.files ? Array.from(event.target.files) : [];
                   setExpenseForm((prev) => ({ ...prev, files }));
                 }}
+              />
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+              <input
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
+                placeholder="Yönetici şifresi"
+                type="password"
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
               />
               {expenseError ? (
                 <p className="mt-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
@@ -1229,7 +1408,15 @@ export default function DashboardPage() {
                   </span>
                 </div>
               </div>
-              {expenseLog.length === 0 ? (
+              {expenseListError ? (
+                <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">
+                  {expenseListError}
+                </p>
+              ) : expenseListLoading ? (
+                <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
+                  Masraf kayıtları yükleniyor...
+                </p>
+              ) : expenseLog.length === 0 ? (
                 <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
                   Henüz masraf kaydı eklemediniz.
                 </p>

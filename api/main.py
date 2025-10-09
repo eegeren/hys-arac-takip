@@ -1,4 +1,4 @@
-import os, smtplib
+import os, smtplib, base64, binascii
 from datetime import date, timedelta, datetime, timezone
 from fastapi import FastAPI, Query, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -9,7 +9,7 @@ from typing import Mapping
 from apscheduler.schedulers.background import BackgroundScheduler
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text, bindparam
 from sqlalchemy.exc import IntegrityError
 import httpx
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -46,6 +46,9 @@ ALLOWED_DOC_TYPES = {
 }
 PANEL_URL = os.getenv("PANEL_URL","https://hys-arac-takip-1.onrender.com")
 VEHICLE_ADMIN_PASSWORD = os.getenv("VEHICLE_ADMIN_PASSWORD", "hys123")
+DAMAGE_SEVERITIES_ALLOWED = {"hafif", "orta", "ağır"}
+DAMAGE_SEVERITY_DISPLAY = {"hafif": "Hafif", "orta": "Orta", "ağır": "Ağır"}
+ATTACHMENT_MAX_BYTES = int(os.getenv("ATTACHMENT_MAX_BYTES", str(5 * 1024 * 1024)))
 
 engine = create_engine(DATABASE_URL, future=True, pool_pre_ping=True)
 app = FastAPI(title="HYS Fleet API", version="1.3.0")
@@ -215,6 +218,23 @@ def _document_status(valid_to: date | None) -> str:
         return "warning"
     return "ok"
 
+def _decode_base64_content(raw: str) -> bytes:
+    data = (raw or "").strip()
+    if "," in data:
+        data = data.split(",", 1)[1]
+    try:
+        content = base64.b64decode(data, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=400, detail="Geçersiz dosya içeriği")
+    if len(content) > ATTACHMENT_MAX_BYTES:
+        raise HTTPException(status_code=400, detail="Dosya boyutu sınırı aşıldı")
+    return content
+
+def _encode_base64_content(data: bytes | None) -> str:
+    if not data:
+        return ""
+    return base64.b64encode(data).decode("ascii")
+
 def smtp_available() -> bool:
     return bool(SMTP_HOST) and SMTP_HOST.lower() not in {"mailhog", "localhost", "127.0.0.1"}
 
@@ -356,6 +376,34 @@ class DocumentUpdateRequest(BaseModel):
     valid_from: date | None = None
     valid_to: date | None = None
     note: str | None = None
+    admin_password: str
+
+class DamageAttachmentPayload(BaseModel):
+    file_name: str
+    mime_type: str | None = None
+    content_base64: str
+
+class DamageCreateRequest(BaseModel):
+    plate: str
+    title: str
+    description: str | None = None
+    severity: str
+    occurred_at: date
+    attachments: list[DamageAttachmentPayload] = []
+    admin_password: str
+
+class ExpenseAttachmentPayload(BaseModel):
+    file_name: str
+    mime_type: str | None = None
+    content_base64: str
+
+class ExpenseCreateRequest(BaseModel):
+    plate: str
+    category: str
+    amount: float
+    description: str | None = None
+    expense_date: date
+    attachments: list[ExpenseAttachmentPayload] = []
     admin_password: str
 
     @property
@@ -898,6 +946,293 @@ def expiring(days: int = Query(30, ge=1, le=365)):
         )
     return result
 
+def _serialize_damage_row(row: Mapping[str, object], attachments: list[Mapping[str, object]]):
+    return {
+        "id": row["id"],
+        "vehicle_id": row.get("vehicle_id"),
+        "plate": row["plate"],
+        "title": row["title"],
+        "description": row.get("description"),
+        "severity": row["severity"],
+        "occurred_at": row["occurred_at"].isoformat() if row.get("occurred_at") else None,
+        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+        "attachments": [
+            {
+                "id": att["id"],
+                "file_name": att["file_name"],
+                "mime_type": att.get("mime_type"),
+                "size_bytes": int(att["size_bytes"]) if att.get("size_bytes") is not None else None,
+                "content_base64": _encode_base64_content(att.get("content")),
+            }
+            for att in attachments
+        ],
+    }
+
+def _serialize_expense_row(row: Mapping[str, object], attachments: list[Mapping[str, object]]):
+    amount = row.get("amount")
+    try:
+        amount_value = float(amount) if amount is not None else 0.0
+    except TypeError:
+        amount_value = 0.0
+    return {
+        "id": row["id"],
+        "vehicle_id": row.get("vehicle_id"),
+        "plate": row["plate"],
+        "category": row["category"],
+        "amount": amount_value,
+        "description": row.get("description"),
+        "expense_date": row["expense_date"].isoformat() if row.get("expense_date") else None,
+        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+        "attachments": [
+            {
+                "id": att["id"],
+                "file_name": att["file_name"],
+                "mime_type": att.get("mime_type"),
+                "size_bytes": int(att["size_bytes"]) if att.get("size_bytes") is not None else None,
+                "content_base64": _encode_base64_content(att.get("content")),
+            }
+            for att in attachments
+        ],
+    }
+
+def _resolve_vehicle_id(con, plate: str | None) -> int | None:
+    if not plate:
+        return None
+    row = con.execute(text("SELECT id FROM vehicles WHERE plate = :plate"), {"plate": plate}).mappings().first()
+    return row["id"] if row else None
+
+def list_damages():
+    with engine.begin() as con:
+        rows = con.execute(
+            text(
+                """
+                SELECT d.id, d.vehicle_id, d.plate, d.title, d.description, d.severity,
+                       d.occurred_at, d.created_at
+                FROM damages d
+                ORDER BY d.created_at DESC
+                """
+            )
+        ).mappings().all()
+        if not rows:
+            return []
+        damage_ids = [row["id"] for row in rows]
+        attachments_map: dict[int, list[Mapping[str, object]]] = {row["id"]: [] for row in rows}
+        att_stmt = (
+            text(
+                """
+                SELECT id, damage_id, file_name, mime_type, octet_length(content) as size_bytes, content
+                FROM damage_attachments
+                WHERE damage_id IN :ids
+                ORDER BY id
+                """
+            ).bindparams(bindparam("ids", expanding=True))
+            if damage_ids
+            else None
+        )
+        if att_stmt is not None:
+            for att in con.execute(att_stmt, {"ids": damage_ids}).mappings().all():
+                attachments_map.setdefault(att["damage_id"], []).append(att)
+        return [_serialize_damage_row(row, attachments_map.get(row["id"], [])) for row in rows]
+
+def _fetch_damage(con, damage_id: int):
+    row = con.execute(
+        text(
+            """
+            SELECT d.id, d.vehicle_id, d.plate, d.title, d.description, d.severity,
+                   d.occurred_at, d.created_at
+            FROM damages d
+            WHERE d.id = :id
+            """
+        ),
+        {"id": damage_id},
+    ).mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Hasar kaydı bulunamadı")
+    attachments = con.execute(
+        text(
+            """
+            SELECT id, damage_id, file_name, mime_type, octet_length(content) as size_bytes, content
+            FROM damage_attachments
+            WHERE damage_id = :id
+            ORDER BY id
+            """
+        ),
+        {"id": damage_id},
+    ).mappings().all()
+    return _serialize_damage_row(row, attachments)
+
+def create_damage(body: DamageCreateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    severity_key = body.severity.strip().lower()
+    if severity_key not in DAMAGE_SEVERITIES_ALLOWED:
+        raise HTTPException(status_code=400, detail="Şiddet yalnızca Hafif, Orta veya Ağır olabilir")
+    severity_label = DAMAGE_SEVERITY_DISPLAY[severity_key]
+    plate = body.plate.strip().upper()
+    attachments_payload = []
+    for att in body.attachments:
+        if not att.content_base64:
+            continue
+        content = _decode_base64_content(att.content_base64)
+        if not content:
+            continue
+        attachments_payload.append(
+            {
+                "file_name": os.path.basename(att.file_name) if att.file_name else "dosya",
+                "mime_type": att.mime_type or "application/octet-stream",
+                "content": content,
+            }
+        )
+    with engine.begin() as con:
+        vehicle_id = _resolve_vehicle_id(con, plate)
+        row = con.execute(
+            text(
+                """
+                INSERT INTO damages (vehicle_id, plate, title, description, severity, occurred_at)
+                VALUES (:vehicle_id, :plate, :title, :description, :severity, :occurred_at)
+                RETURNING id, vehicle_id, plate, title, description, severity, occurred_at, created_at
+                """
+            ),
+            {
+                "vehicle_id": vehicle_id,
+                "plate": plate,
+                "title": body.title.strip(),
+                "description": body.description.strip() if body.description else None,
+                "severity": severity_label,
+                "occurred_at": body.occurred_at,
+            },
+        ).mappings().first()
+        for att in attachments_payload:
+            con.execute(
+                text(
+                    """
+                    INSERT INTO damage_attachments (damage_id, file_name, mime_type, content)
+                    VALUES (:damage_id, :file_name, :mime_type, :content)
+                    """
+                ),
+                {
+                    "damage_id": row["id"],
+                    "file_name": att["file_name"],
+                    "mime_type": att["mime_type"],
+                    "content": att["content"],
+                },
+            )
+        return _fetch_damage(con, row["id"])
+
+def list_expenses():
+    with engine.begin() as con:
+        rows = con.execute(
+            text(
+                """
+                SELECT e.id, e.vehicle_id, e.plate, e.category, e.amount, e.description,
+                       e.expense_date, e.created_at
+                FROM expenses e
+                ORDER BY e.expense_date DESC, e.created_at DESC
+                """
+            )
+        ).mappings().all()
+        if not rows:
+            return []
+        expense_ids = [row["id"] for row in rows]
+        attachments_map: dict[int, list[Mapping[str, object]]] = {row["id"]: [] for row in rows}
+        att_stmt = (
+            text(
+                """
+                SELECT id, expense_id, file_name, mime_type, octet_length(content) as size_bytes, content
+                FROM expense_attachments
+                WHERE expense_id IN :ids
+                ORDER BY id
+                """
+            ).bindparams(bindparam("ids", expanding=True))
+            if expense_ids
+            else None
+        )
+        if att_stmt is not None:
+            for att in con.execute(att_stmt, {"ids": expense_ids}).mappings().all():
+                attachments_map.setdefault(att["expense_id"], []).append(att)
+        return [_serialize_expense_row(row, attachments_map.get(row["id"], [])) for row in rows]
+
+def _fetch_expense(con, expense_id: int):
+    row = con.execute(
+        text(
+            """
+            SELECT e.id, e.vehicle_id, e.plate, e.category, e.amount, e.description,
+                   e.expense_date, e.created_at
+            FROM expenses e
+            WHERE e.id = :id
+            """
+        ),
+        {"id": expense_id},
+    ).mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Masraf kaydı bulunamadı")
+    attachments = con.execute(
+        text(
+            """
+            SELECT id, expense_id, file_name, mime_type, octet_length(content) as size_bytes, content
+            FROM expense_attachments
+            WHERE expense_id = :id
+            ORDER BY id
+            """
+        ),
+        {"id": expense_id},
+    ).mappings().all()
+    return _serialize_expense_row(row, attachments)
+
+def create_expense(body: ExpenseCreateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    plate = body.plate.strip().upper()
+    attachments_payload = []
+    for att in body.attachments:
+        if not att.content_base64:
+            continue
+        content = _decode_base64_content(att.content_base64)
+        if not content:
+            continue
+        attachments_payload.append(
+            {
+                "file_name": os.path.basename(att.file_name) if att.file_name else "belge",
+                "mime_type": att.mime_type or "application/octet-stream",
+                "content": content,
+            }
+        )
+    with engine.begin() as con:
+        vehicle_id = _resolve_vehicle_id(con, plate)
+        row = con.execute(
+            text(
+                """
+                INSERT INTO expenses (vehicle_id, plate, category, amount, description, expense_date)
+                VALUES (:vehicle_id, :plate, :category, :amount, :description, :expense_date)
+                RETURNING id, vehicle_id, plate, category, amount, description, expense_date, created_at
+                """
+            ),
+            {
+                "vehicle_id": vehicle_id,
+                "plate": plate,
+                "category": body.category.strip(),
+                "amount": body.amount,
+                "description": body.description.strip() if body.description else None,
+                "expense_date": body.expense_date,
+            },
+        ).mappings().first()
+        for att in attachments_payload:
+            con.execute(
+                text(
+                    """
+                    INSERT INTO expense_attachments (expense_id, file_name, mime_type, content)
+                    VALUES (:expense_id, :file_name, :mime_type, :content)
+                    """
+                ),
+                {
+                    "expense_id": row["id"],
+                    "file_name": att["file_name"],
+                    "mime_type": att["mime_type"],
+                    "content": att["content"],
+                },
+            )
+        return _fetch_expense(con, row["id"])
+
 def notify_job(vehicle_id: int | None = None):
     today = today_local()
     with engine.begin() as con:
@@ -1229,6 +1564,22 @@ def expiring_api(days: int = Query(30, ge=1, le=365)):
 @app.get("/api/documents/upcoming")
 def documents_upcoming_api(days: int = Query(60, ge=1, le=365)):
     return documents_upcoming(days)
+
+@app.get("/api/damages")
+def damages_api():
+    return list_damages()
+
+@app.post("/api/damages", status_code=201)
+def create_damage_api(body: DamageCreateRequest):
+    return create_damage(body)
+
+@app.get("/api/expenses")
+def expenses_api():
+    return list_expenses()
+
+@app.post("/api/expenses", status_code=201)
+def create_expense_api(body: ExpenseCreateRequest):
+    return create_expense(body)
 
 @app.post("/api/debug/run_notifications")
 def debug_run_notifications_api(
