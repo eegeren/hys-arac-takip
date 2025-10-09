@@ -56,6 +56,7 @@ type Vehicle = {
   year: number | null;
   created_at: string;
   document_count: number;
+  responsible_email: string | null;
   documents?: Array<{
     id: number;
     doc_type: string;
@@ -85,6 +86,56 @@ type DocOverview = {
   ok: number;
   expired: number;
   dueThisWeek: number;
+};
+
+type DocumentUploadEntry = {
+  id: string;
+  plate: string;
+  docType: string;
+  note: string;
+  fileName: string;
+  uploadedAt: string;
+};
+
+type DamageEntry = {
+  id: string;
+  plate: string;
+  title: string;
+  description: string;
+  severity: "Hafif" | "Orta" | "Ağır";
+  occurredAt: string;
+};
+
+type ExpenseEntry = {
+  id: string;
+  plate: string;
+  category: string;
+  amount: number;
+  description: string;
+  createdAt: string;
+};
+
+type UploadFormState = {
+  plate: string;
+  docType: string;
+  note: string;
+  file: File | null;
+};
+
+type DamageFormState = {
+  plate: string;
+  title: string;
+  description: string;
+  severity: DamageEntry["severity"];
+  occurredAt: string;
+};
+
+type ExpenseFormState = {
+  plate: string;
+  category: string;
+  amount: string;
+  description: string;
+  createdAt: string;
 };
 
 const statusClass = (status: string) => {
@@ -134,6 +185,30 @@ const statusColor = (status: string) => {
 const statusMeta = (status: string) =>
   DOC_STATUS_META[status as keyof typeof DOC_STATUS_META] ?? { label: "Durum", description: "" };
 
+const DAMAGE_SEVERITIES: Array<DamageEntry["severity"]> = ["Hafif", "Orta", "Ağır"];
+const EXPENSE_CATEGORIES = [
+  "Bakım",
+  "Onarım",
+  "Sigorta",
+  "Vergi",
+  "Yakıt",
+  "Diğer",
+];
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
+
+const normalizePlateInput = (value: string) => value.trim().toUpperCase();
+
+const flashMessage = (
+  setter: React.Dispatch<React.SetStateAction<string | null>>,
+  message: string,
+  timeout = 3500,
+) => {
+  setter(message);
+  setTimeout(() => setter(null), timeout);
+};
+
 export default function DashboardPage() {
   const [docs, setDocs] = useState<UpcomingDocument[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -145,6 +220,34 @@ export default function DashboardPage() {
   const [selectedVehicle, setSelectedVehicle] = useState<(Vehicle & { documents: UpcomingDocument[] }) | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [compareType, setCompareType] = useState<string | null>(null);
+  const [vehicleFilter, setVehicleFilter] = useState<"all" | "withDocs" | "missingDocs">("all");
+  const [uploadForm, setUploadForm] = useState<UploadFormState>({
+    plate: "",
+    docType: "",
+    note: "",
+    file: null,
+  });
+  const [uploadLog, setUploadLog] = useState<DocumentUploadEntry[]>([]);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
+  const [uploadFileKey, setUploadFileKey] = useState<number>(() => Date.now());
+  const [damageForm, setDamageForm] = useState<DamageFormState>({
+    plate: "",
+    title: "",
+    description: "",
+    severity: "Hafif",
+    occurredAt: new Date().toISOString().split("T")[0],
+  });
+  const [damageLog, setDamageLog] = useState<DamageEntry[]>([]);
+  const [damageMessage, setDamageMessage] = useState<string | null>(null);
+  const [expenseForm, setExpenseForm] = useState<ExpenseFormState>({
+    plate: "",
+    category: "Bakım",
+    amount: "",
+    description: "",
+    createdAt: new Date().toISOString().split("T")[0],
+  });
+  const [expenseLog, setExpenseLog] = useState<ExpenseEntry[]>([]);
+  const [expenseMessage, setExpenseMessage] = useState<string | null>(null);
 
   const docOverview = React.useMemo<DocOverview>(() => {
     const totals: DocOverview = {
@@ -303,6 +406,106 @@ export default function DashboardPage() {
     }
     return { have, missing };
   }, [compareType, vehicles]);
+
+  const filteredVehicles = React.useMemo(() => {
+    if (vehicleFilter === "withDocs") {
+      return vehicles.filter((vehicle) => vehicle.document_count > 0);
+    }
+    if (vehicleFilter === "missingDocs") {
+      return vehicles.filter((vehicle) => vehicle.document_count === 0);
+    }
+    return vehicles;
+  }, [vehicleFilter, vehicles]);
+
+  const vehicleFilterLabel = (value: "all" | "withDocs" | "missingDocs") => {
+    if (value === "withDocs") return "Belgeli";
+    if (value === "missingDocs") return "Eksik";
+    return "Tümü";
+  };
+
+  const totalExpense = React.useMemo(() => {
+    return expenseLog.reduce((sum, item) => sum + item.amount, 0);
+  }, [expenseLog]);
+
+  const handleUploadSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!uploadForm.plate.trim() || !uploadForm.docType.trim() || !uploadForm.file) {
+      flashMessage(setUploadMessage, "Lütfen plaka, belge türü ve dosya seçin.");
+      return;
+    }
+    const newEntry: DocumentUploadEntry = {
+      id: crypto.randomUUID(),
+      plate: normalizePlateInput(uploadForm.plate),
+      docType: uploadForm.docType,
+      note: uploadForm.note.trim(),
+      fileName: uploadForm.file.name,
+      uploadedAt: new Date().toISOString(),
+    };
+    setUploadLog((prev) => [newEntry, ...prev].slice(0, 12));
+    flashMessage(setUploadMessage, "Dosya kaydı listesine eklendi. (Demo)");
+    setUploadForm({
+      plate: "",
+      docType: "",
+      note: "",
+      file: null,
+    });
+    setUploadFileKey(Date.now());
+  };
+
+  const handleDamageSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!damageForm.plate.trim() || !damageForm.title.trim()) {
+      flashMessage(setDamageMessage, "Plaka ve başlık alanları zorunludur.");
+      return;
+    }
+    const newEntry: DamageEntry = {
+      id: crypto.randomUUID(),
+      plate: normalizePlateInput(damageForm.plate),
+      title: damageForm.title.trim(),
+      description: damageForm.description.trim(),
+      severity: damageForm.severity,
+      occurredAt: damageForm.occurredAt,
+    };
+    setDamageLog((prev) => [newEntry, ...prev].slice(0, 12));
+    flashMessage(setDamageMessage, "Hasar kaydı sisteme eklendi. (Demo)");
+    setDamageForm({
+      plate: "",
+      title: "",
+      description: "",
+      severity: damageForm.severity,
+      occurredAt: new Date().toISOString().split("T")[0],
+    });
+  };
+
+  const handleExpenseSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!expenseForm.plate.trim() || !expenseForm.amount.trim()) {
+      flashMessage(setExpenseMessage, "Plaka ve tutar alanları zorunludur.");
+      return;
+    }
+    const numericAmount = Number(expenseForm.amount.replace(",", "."));
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      flashMessage(setExpenseMessage, "Tutarı geçerli bir sayı olarak girin.");
+      return;
+    }
+    const newEntry: ExpenseEntry = {
+      id: crypto.randomUUID(),
+      plate: normalizePlateInput(expenseForm.plate),
+      category: expenseForm.category,
+      amount: numericAmount,
+      description: expenseForm.description.trim(),
+      createdAt: expenseForm.createdAt,
+    };
+    setExpenseLog((prev) => [newEntry, ...prev].slice(0, 12));
+    flashMessage(setExpenseMessage, "Masraf kaydı başarıyla eklendi. (Demo)");
+    setExpenseForm({
+      plate: "",
+      category: expenseForm.category,
+      amount: "",
+      description: "",
+      createdAt: new Date().toISOString().split("T")[0],
+    });
+  };
 
   return (
     <main className="relative min-h-screen bg-slate-950 text-slate-100">
@@ -473,15 +676,36 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-300">Araçlara ait temel bilgiler ve belge adetleri</p>
             </div>
             <Badge className="border-slate-600/60 bg-slate-800/80 text-slate-200">
-              {loading ? "Yükleniyor..." : `${vehicles.length} araç`}
+              {loading ? "Yükleniyor..." : `${filteredVehicles.length} araç`}
             </Badge>
           </div>
 
-          {vehicles.length === 0 && !loading ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {(["all", "withDocs", "missingDocs"] as const).map((value) => (
+              <button
+                key={value}
+                onClick={() => setVehicleFilter(value)}
+                className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium transition ${
+                  vehicleFilter === value
+                    ? "border-emerald-400/70 bg-emerald-500/20 text-emerald-100"
+                    : "border-slate-700/70 bg-slate-900/40 text-slate-300 hover:border-slate-500/60 hover:text-white"
+                }`}
+              >
+                {vehicleFilterLabel(value)}
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    value === "withDocs" ? "bg-emerald-400" : value === "missingDocs" ? "bg-rose-400" : "bg-slate-500"
+                  }`}
+                />
+              </button>
+            ))}
+          </div>
+
+          {filteredVehicles.length === 0 && !loading ? (
             <p className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-5 text-slate-300">Kayıtlı araç bulunmamaktadır.</p>
           ) : (
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
-              {vehicles.map((vehicle) => (
+              {filteredVehicles.map((vehicle) => (
                 <article
                   key={vehicle.id}
                   className="group cursor-pointer overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/70 shadow-[0_25px_60px_-45px_rgba(15,23,42,0.9)] transition hover:-translate-y-1 hover:shadow-[0_35px_80px_-45px_rgba(15,23,42,0.95)]"
@@ -521,6 +745,20 @@ export default function DashboardPage() {
                         </dd>
                       </div>
                     </dl>
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <span className="tracking-[0.25em] uppercase">Belge Kapsama</span>
+                        <span className="font-semibold text-white/80">
+                          {vehicle.document_count}/{ALL_TYPES.length}
+                        </span>
+                      </div>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-800/80">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-teal-500 transition-all"
+                          style={{ width: `${Math.min((vehicle.document_count / ALL_TYPES.length) * 100, 100)}%` }}
+                        />
+                      </div>
+                    </div>
                     <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.25em] text-slate-500">
                       <span className="rounded-full border border-slate-700/70 px-3 py-1">
                         {vehicle.documents?.length ?? vehicle.document_count} kayıtlı belge
@@ -528,13 +766,366 @@ export default function DashboardPage() {
                       <span className="rounded-full border border-slate-700/70 px-3 py-1">
                         {vehicle.make ? vehicle.make : "Marka Yok"}
                       </span>
+                      {vehicle.model ? (
+                        <span className="rounded-full border border-slate-700/70 px-3 py-1">{vehicle.model}</span>
+                      ) : null}
+                      {vehicle.year ? (
+                        <span className="rounded-full border border-slate-700/70 px-3 py-1">{vehicle.year}</span>
+                      ) : null}
                     </div>
+                    {vehicle.responsible_email ? (
+                      <div className="flex items-center justify-between rounded-xl border border-slate-700/70 bg-black/20 px-4 py-2 text-xs text-slate-200 sm:text-sm">
+                        <span className="uppercase tracking-[0.25em] text-slate-400">Sorumlu</span>
+                        <span className="font-medium text-white/85">{vehicle.responsible_email}</span>
+                      </div>
+                    ) : null}
                     <p className="text-[11px] text-slate-400 transition group-hover:text-slate-200">Detay görmek için tıklayın</p>
                   </div>
                 </article>
               ))}
             </div>
           )}
+        </section>
+
+        <section className="space-y-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-2xl font-semibold text-white sm:text-3xl">Operasyon Yönetimi</h2>
+              <p className="text-sm text-slate-300">
+                Evrak yükleme, hasar bildirme ve masraf takibini tek yerden yönetin. Veriler demo amaçlı yerelde tutulur.
+              </p>
+            </div>
+            <Badge className="border-slate-600/60 bg-slate-800/80 text-slate-200">
+              {uploadLog.length + damageLog.length + expenseLog.length} kayıt
+            </Badge>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+            <form
+              className="flex flex-col rounded-2xl border border-slate-800/80 bg-slate-900/70 p-5 shadow-[0_30px_80px_-60px_rgba(15,23,42,0.95)]"
+              onSubmit={handleUploadSubmit}
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Belge Yükleme</h3>
+                  <p className="text-xs text-slate-400">PDF, JPG, PNG gibi dosyaları kaydedin.</p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-emerald-400/50 bg-emerald-500/20 text-emerald-100">
+                  📄
+                </span>
+              </div>
+              <label className="text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Plaka</label>
+              <input
+                className="mt-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                placeholder="34 ABC 123"
+                value={uploadForm.plate}
+                onChange={(event) => setUploadForm((prev) => ({ ...prev, plate: event.target.value }))}
+              />
+              <label className="mt-4 text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Belge Türü</label>
+              <select
+                className="mt-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                value={uploadForm.docType}
+                onChange={(event) => setUploadForm((prev) => ({ ...prev, docType: event.target.value }))}
+              >
+                <option value="">Belge seçin</option>
+                {ALL_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {docTypeLabel(type)}
+                  </option>
+                ))}
+              </select>
+              <label className="mt-4 text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Dosya</label>
+              <input
+                key={uploadFileKey}
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png,.doc,.docx"
+                className="mt-1 block w-full cursor-pointer rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-emerald-500/20 file:px-3 file:py-1 file:text-emerald-100 hover:file:bg-emerald-500/30"
+                onChange={(event) => {
+                  const file = event.target.files?.[0] ?? null;
+                  setUploadForm((prev) => ({ ...prev, file }));
+                }}
+              />
+              <label className="mt-4 text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Not (opsiyonel)</label>
+              <textarea
+                className="mt-1 min-h-[80px] rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                placeholder="Hazırlayan, hatırlatma vb."
+                value={uploadForm.note}
+                onChange={(event) => setUploadForm((prev) => ({ ...prev, note: event.target.value }))}
+              />
+              {uploadMessage ? (
+                <p className="mt-3 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                  {uploadMessage}
+                </p>
+              ) : null}
+              <button
+                type="submit"
+                className="mt-5 inline-flex items-center justify-center rounded-lg border border-emerald-400/40 bg-gradient-to-r from-emerald-500/30 to-teal-500/30 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:border-emerald-300/70 hover:from-emerald-500/40 hover:to-teal-500/40"
+              >
+                Yüklemeyi Kaydet
+              </button>
+            </form>
+
+            <form
+              className="flex flex-col rounded-2xl border border-slate-800/80 bg-slate-900/70 p-5 shadow-[0_30px_80px_-60px_rgba(15,23,42,0.95)]"
+              onSubmit={handleDamageSubmit}
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Hasar Bildirimi</h3>
+                  <p className="text-xs text-slate-400">Her hasarı konum, tarih ve şiddetine göre kaydedin.</p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-400/50 bg-rose-500/20 text-rose-100">
+                  🛠️
+                </span>
+              </div>
+              <label className="text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Plaka</label>
+              <input
+                className="mt-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:outline-none"
+                placeholder="34 ABC 123"
+                value={damageForm.plate}
+                onChange={(event) => setDamageForm((prev) => ({ ...prev, plate: event.target.value }))}
+              />
+              <label className="mt-4 text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Başlık</label>
+              <input
+                className="mt-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:outline-none"
+                placeholder="Örn. Sağ kapı çizik"
+                value={damageForm.title}
+                onChange={(event) => setDamageForm((prev) => ({ ...prev, title: event.target.value }))}
+              />
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Şiddet</label>
+                  <select
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:outline-none"
+                    value={damageForm.severity}
+                    onChange={(event) =>
+                      setDamageForm((prev) => ({ ...prev, severity: event.target.value as DamageEntry["severity"] }))
+                    }
+                  >
+                    {DAMAGE_SEVERITIES.map((severity) => (
+                      <option key={severity} value={severity}>
+                        {severity}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Tarih</label>
+                  <input
+                    type="date"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:outline-none"
+                    value={damageForm.occurredAt}
+                    onChange={(event) => setDamageForm((prev) => ({ ...prev, occurredAt: event.target.value }))}
+                  />
+                </div>
+              </div>
+              <label className="mt-4 text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Açıklama</label>
+              <textarea
+                className="mt-1 min-h-[80px] rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-rose-400 focus:outline-none"
+                placeholder="Hasarın konumu, ek notlar..."
+                value={damageForm.description}
+                onChange={(event) => setDamageForm((prev) => ({ ...prev, description: event.target.value }))}
+              />
+              {damageMessage ? (
+                <p className="mt-3 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">{damageMessage}</p>
+              ) : null}
+              <button
+                type="submit"
+                className="mt-5 inline-flex items-center justify-center rounded-lg border border-rose-400/40 bg-gradient-to-r from-rose-500/30 to-amber-500/30 px-4 py-2 text-sm font-medium text-rose-100 transition hover:border-rose-300/70 hover:from-rose-500/40 hover:to-amber-500/40"
+              >
+                Hasarı Kaydet
+              </button>
+            </form>
+
+            <form
+              className="flex flex-col rounded-2xl border border-slate-800/80 bg-slate-900/70 p-5 shadow-[0_30px_80px_-60px_rgba(15,23,42,0.95)]"
+              onSubmit={handleExpenseSubmit}
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Masraf Takibi</h3>
+                  <p className="text-xs text-slate-400">Bakım, onarım ve diğer giderleri listeleyin.</p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-indigo-400/50 bg-indigo-500/20 text-indigo-100">
+                  💳
+                </span>
+              </div>
+              <label className="text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Plaka</label>
+              <input
+                className="mt-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
+                placeholder="34 ABC 123"
+                value={expenseForm.plate}
+                onChange={(event) => setExpenseForm((prev) => ({ ...prev, plate: event.target.value }))}
+              />
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Kategori</label>
+                  <select
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
+                    value={expenseForm.category}
+                    onChange={(event) => setExpenseForm((prev) => ({ ...prev, category: event.target.value }))}
+                  >
+                    {EXPENSE_CATEGORIES.map((category) => (
+                      <option key={category} value={category}>
+                        {category}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Tutar</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
+                    placeholder="Örn. 1500"
+                    value={expenseForm.amount}
+                    onChange={(event) => setExpenseForm((prev) => ({ ...prev, amount: event.target.value }))}
+                  />
+                </div>
+              </div>
+              <label className="mt-4 text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Tarih</label>
+              <input
+                type="date"
+                className="mt-1 rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
+                value={expenseForm.createdAt}
+                onChange={(event) => setExpenseForm((prev) => ({ ...prev, createdAt: event.target.value }))}
+              />
+              <label className="mt-4 text-xs font-medium uppercase tracking-[0.25em] text-slate-400">Açıklama</label>
+              <textarea
+                className="mt-1 min-h-[80px] rounded-lg border border-slate-700 bg-slate-900/80 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
+                placeholder="İşlem detayları, servis bilgisi vb."
+                value={expenseForm.description}
+                onChange={(event) => setExpenseForm((prev) => ({ ...prev, description: event.target.value }))}
+              />
+              {expenseMessage ? (
+                <p className="mt-3 rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-100">
+                  {expenseMessage}
+                </p>
+              ) : null}
+              <button
+                type="submit"
+                className="mt-5 inline-flex items-center justify-center rounded-lg border border-indigo-400/40 bg-gradient-to-r from-indigo-500/30 to-violet-500/30 px-4 py-2 text-sm font-medium text-indigo-100 transition hover:border-indigo-300/70 hover:from-indigo-500/40 hover:to-violet-500/40"
+              >
+                Masrafı Kaydet
+              </button>
+            </form>
+          </div>
+
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+            <div className="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Son Evrak Yüklemeleri</h3>
+                <Badge className="border-emerald-300/40 bg-emerald-500/20 text-emerald-100">{uploadLog.length}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                En son eklenen 12 dosya listelenir. Sabit depolama için API entegrasyonu gerekir.
+              </p>
+              <div className="mt-4 space-y-3">
+                {uploadLog.length === 0 ? (
+                  <p className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-4 text-sm text-slate-300">
+                    Henüz yükleme yapılmadı.
+                  </p>
+                ) : (
+                  uploadLog.map((entry) => (
+                    <div key={entry.id} className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-3">
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <span>{new Date(entry.uploadedAt).toLocaleString("tr-TR")}</span>
+                        <span className="rounded-full border border-emerald-400/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.25em] text-emerald-100">
+                          {docTypeLabel(entry.docType)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-sm text-white">
+                        <span className="font-semibold">{entry.plate}</span>
+                        <span className="text-xs text-slate-300">{entry.fileName}</span>
+                      </div>
+                      {entry.note ? <p className="mt-1 text-xs text-slate-300">{entry.note}</p> : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Hasar Kayıtları</h3>
+                <Badge className="border-rose-300/40 bg-rose-500/20 text-rose-100">{damageLog.length}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">Şiddete göre renklendirilmiş kronolojik kayıt.</p>
+              <div className="mt-4 space-y-3">
+                {damageLog.length === 0 ? (
+                  <p className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-4 text-sm text-slate-300">
+                    Henüz hasar bildirilmedi.
+                  </p>
+                ) : (
+                  damageLog.map((entry) => (
+                    <div
+                      key={entry.id}
+                      className={`rounded-lg border px-3 py-3 ${
+                        entry.severity === "Ağır"
+                          ? "border-rose-500/50 bg-rose-500/10"
+                          : entry.severity === "Orta"
+                          ? "border-amber-400/40 bg-amber-500/10"
+                          : "border-slate-700/70 bg-slate-900/80"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-xs text-slate-200">
+                        <span className="font-semibold text-white">{entry.plate}</span>
+                        <span>{new Date(entry.occurredAt).toLocaleDateString("tr-TR")}</span>
+                      </div>
+                      <div className="mt-1 flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-white">{entry.title}</p>
+                          {entry.description ? <p className="text-xs text-slate-200">{entry.description}</p> : null}
+                        </div>
+                        <span className="rounded-full border border-white/20 bg-black/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.25em] text-white">
+                          {entry.severity}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-800/80 bg-slate-900/70 p-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Masraf Özeti</h3>
+                <Badge className="border-indigo-300/40 bg-indigo-500/20 text-indigo-100">{expenseLog.length}</Badge>
+              </div>
+              <p className="mt-1 text-xs text-slate-400">Tutar, kategori ve tarih bazlı son hareketler.</p>
+              <div className="mt-4">
+                <div className="flex items-center justify-between rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-3 py-3 text-sm font-semibold text-indigo-100">
+                  <span>Toplam Tutar</span>
+                  <span>{formatCurrency(totalExpense)}</span>
+                </div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {expenseLog.length === 0 ? (
+                  <p className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-4 text-sm text-slate-300">
+                    Masraf kaydı bulunmuyor.
+                  </p>
+                ) : (
+                  expenseLog.map((entry) => (
+                    <div key={entry.id} className="rounded-lg border border-slate-800 bg-slate-900/80 px-3 py-3">
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <span>{new Date(entry.createdAt).toLocaleDateString("tr-TR")}</span>
+                        <span className="rounded-full border border-indigo-300/40 bg-indigo-500/10 px-2 py-0.5 text-[10px] uppercase tracking-[0.25em] text-indigo-100">
+                          {entry.category}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-sm text-white">
+                        <span className="font-semibold">{entry.plate}</span>
+                        <span>{formatCurrency(entry.amount)}</span>
+                      </div>
+                      {entry.description ? <p className="mt-1 text-xs text-slate-300">{entry.description}</p> : null}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
         </section>
       </div>
 
