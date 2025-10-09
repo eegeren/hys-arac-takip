@@ -96,6 +96,7 @@ type ExpenseEntry = {
   amount: number;
   description: string;
   createdAt: string;
+  expenseDate: string;
   attachments: ExpenseAttachment[];
 };
 
@@ -116,6 +117,7 @@ type ExpenseFormState = {
   createdAt: string;
   files: File[];
 };
+
 
 type DamageApiResponse = {
   id: number;
@@ -226,6 +228,24 @@ const formatDaysLabel = (days?: number | null) => {
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
 
+const createInitialDamageFormState = (): DamageFormState => ({
+  plate: "",
+  title: "",
+  description: "",
+  severity: "Hafif",
+  occurredAt: new Date().toISOString().split("T")[0],
+  files: [],
+});
+
+const createInitialExpenseFormState = (): ExpenseFormState => ({
+  plate: "",
+  category: EXPENSE_CATEGORIES[0],
+  amount: "",
+  description: "",
+  createdAt: new Date().toISOString().split("T")[0],
+  files: [],
+});
+
 const readFileAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -259,21 +279,26 @@ const adaptDamageResponse = (item: DamageApiResponse): DamageEntry => {
   };
 };
 
-const adaptExpenseResponse = (item: ExpenseApiResponse): ExpenseEntry => ({
-  id: item.id,
-  plate: item.plate,
-  category: item.category,
-  amount: typeof item.amount === "number" ? item.amount : Number(item.amount ?? 0),
-  description: item.description ?? "",
-  createdAt: item.created_at ?? item.expense_date ?? new Date().toISOString(),
-  attachments: item.attachments.map((attachment) => ({
-    id: attachment.id,
-    name: attachment.file_name,
-    mimeType: attachment.mime_type ?? null,
-    preview: toDataUrl(attachment.mime_type, attachment.content_base64),
-    size: attachment.size_bytes ?? null,
-  })),
-});
+const adaptExpenseResponse = (item: ExpenseApiResponse): ExpenseEntry => {
+  const expenseDate = item.expense_date ?? item.created_at ?? new Date().toISOString();
+  const createdAt = item.created_at ?? expenseDate;
+  return {
+    id: item.id,
+    plate: item.plate,
+    category: item.category,
+    amount: typeof item.amount === "number" ? item.amount : Number(item.amount ?? 0),
+    description: item.description ?? "",
+    createdAt,
+    expenseDate,
+    attachments: item.attachments.map((attachment) => ({
+      id: attachment.id,
+      name: attachment.file_name,
+      mimeType: attachment.mime_type ?? null,
+      preview: toDataUrl(attachment.mime_type, attachment.content_base64),
+      size: attachment.size_bytes ?? null,
+    })),
+  };
+};
 
 const extractErrorMessage = async (res: Response) => {
   const contentType = res.headers.get("content-type") ?? "";
@@ -348,14 +373,7 @@ export default function DashboardPage() {
   const [documentFormError, setDocumentFormError] = useState<string | null>(null);
   const [documentFormMessage, setDocumentFormMessage] = useState<string | null>(null);
 
-  const [damageForm, setDamageForm] = useState<DamageFormState>(() => ({
-    plate: "",
-    title: "",
-    description: "",
-    severity: "Hafif",
-    occurredAt: new Date().toISOString().split("T")[0],
-    files: [],
-  }));
+  const [damageForm, setDamageForm] = useState<DamageFormState>(() => createInitialDamageFormState());
   const [damageLog, setDamageLog] = useState<DamageEntry[]>([]);
   const [damageError, setDamageError] = useState<string | null>(null);
   const [damageMessage, setDamageMessage] = useState<string | null>(null);
@@ -363,15 +381,9 @@ export default function DashboardPage() {
   const [damageFileInputKey, setDamageFileInputKey] = useState(() => Date.now());
   const [damageListLoading, setDamageListLoading] = useState(true);
   const [damageListError, setDamageListError] = useState<string | null>(null);
+  const [editingDamageId, setEditingDamageId] = useState<number | null>(null);
 
-  const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(() => ({
-    plate: "",
-    category: EXPENSE_CATEGORIES[0],
-    amount: "",
-    description: "",
-    createdAt: new Date().toISOString().split("T")[0],
-    files: [],
-  }));
+  const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(() => createInitialExpenseFormState());
   const [expenseLog, setExpenseLog] = useState<ExpenseEntry[]>([]);
   const [expenseError, setExpenseError] = useState<string | null>(null);
   const [expenseMessage, setExpenseMessage] = useState<string | null>(null);
@@ -379,6 +391,7 @@ export default function DashboardPage() {
   const [expenseFileInputKey, setExpenseFileInputKey] = useState(() => Date.now());
   const [expenseListLoading, setExpenseListLoading] = useState(true);
   const [expenseListError, setExpenseListError] = useState<string | null>(null);
+  const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -649,6 +662,58 @@ export default function DashboardPage() {
     }
   };
 
+  const startDamageEdit = (entry: DamageEntry) => {
+    setEditingDamageId(entry.id);
+    setDamageError(null);
+    setDamageMessage(null);
+    setDamageForm({
+      plate: entry.plate,
+      title: entry.title,
+      description: entry.description,
+      severity: DAMAGE_SEVERITIES.includes(entry.severity) ? entry.severity : "Hafif",
+      occurredAt: entry.occurredAt ? entry.occurredAt.slice(0, 10) : createInitialDamageFormState().occurredAt,
+      files: [],
+    });
+    setDamageFileInputKey(Date.now());
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const cancelDamageEdit = () => {
+    setEditingDamageId(null);
+    setDamageError(null);
+    setDamageMessage(null);
+    setDamageForm(createInitialDamageFormState());
+    setDamageFileInputKey(Date.now());
+  };
+
+  const startExpenseEdit = (entry: ExpenseEntry) => {
+    setEditingExpenseId(entry.id);
+    setExpenseError(null);
+    setExpenseMessage(null);
+    setExpenseForm({
+      plate: entry.plate,
+      category: EXPENSE_CATEGORIES.includes(entry.category) ? entry.category : EXPENSE_CATEGORIES[0],
+      amount: Number.isFinite(entry.amount) ? String(entry.amount) : "",
+      description: entry.description,
+      createdAt: entry.expenseDate ? entry.expenseDate.slice(0, 10) : createInitialExpenseFormState().createdAt,
+      files: [],
+    });
+    setExpenseFileInputKey(Date.now());
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const cancelExpenseEdit = () => {
+    setEditingExpenseId(null);
+    setExpenseError(null);
+    setExpenseMessage(null);
+    setExpenseForm(createInitialExpenseFormState());
+    setExpenseFileInputKey(Date.now());
+  };
+
   const handleDamageSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDamageError(null);
@@ -663,46 +728,61 @@ export default function DashboardPage() {
 
     setDamageBusy(true);
     try {
-      const attachmentPayloads = await Promise.all(
-        damageForm.files.map(async (file) => {
-          const dataUrl = await readFileAsDataUrl(file);
-          const [meta, base64Content] = dataUrl.split(",");
-          const mimeMatch = meta?.match(/^data:(.*?);base64$/);
-          return {
-            file_name: file.name,
-            mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
-            content_base64: base64Content ?? "",
-          };
-        }),
-      );
-      const payload = {
+      const attachmentPayloads =
+        damageForm.files.length > 0
+          ? await Promise.all(
+              damageForm.files.map(async (file) => {
+                const dataUrl = await readFileAsDataUrl(file);
+                const [meta, base64Content] = dataUrl.split(",");
+                const mimeMatch = meta?.match(/^data:(.*?);base64$/);
+                return {
+                  file_name: file.name,
+                  mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
+                  content_base64: base64Content ?? "",
+                };
+              }),
+            )
+          : [];
+      const basePayload = {
         plate: damageForm.plate.trim().toUpperCase(),
         title: damageForm.title.trim(),
         description: damageForm.description.trim() || null,
         severity: damageForm.severity,
         occurred_at: damageForm.occurredAt,
-        attachments: attachmentPayloads,
-        admin_password: adminPassword.trim(),
       };
-      const res = await fetch(apiUrl("/api/damages"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(await extractErrorMessage(res));
-      await res.json();
-      await loadDamages();
+      if (editingDamageId) {
+        const res = await fetch(apiUrl(`/api/damages/${editingDamageId}`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...basePayload,
+            attachments: attachmentPayloads,
+            admin_password: adminPassword.trim(),
+          }),
+        });
+        if (!res.ok) throw new Error(await extractErrorMessage(res));
+        await res.json();
+        await loadDamages();
+        setEditingDamageId(null);
+        flashMessage(setDamageMessage, "Hasar güncellendi");
+      } else {
+        const res = await fetch(apiUrl("/api/damages"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...basePayload,
+            attachments: attachmentPayloads,
+            admin_password: adminPassword.trim(),
+          }),
+        });
+        if (!res.ok) throw new Error(await extractErrorMessage(res));
+        await res.json();
+        await loadDamages();
+        flashMessage(setDamageMessage, "Hasar kaydı eklendi");
+      }
       setDamageListError(null);
-      setDamageForm({
-        plate: "",
-        title: "",
-        description: "",
-        severity: damageForm.severity,
-        occurredAt: damageForm.occurredAt,
-        files: [],
-      });
+      setDamageForm(createInitialDamageFormState());
       setDamageFileInputKey(Date.now());
-      flashMessage(setDamageMessage, "Hasar kaydı eklendi");
     } catch (err) {
       console.error(err);
       setDamageError((err as Error).message || "Hasar kaydedilemedi");
@@ -730,46 +810,62 @@ export default function DashboardPage() {
 
     setExpenseBusy(true);
     try {
-      const attachmentsPayload = await Promise.all(
-        expenseForm.files.map(async (file) => {
-          const dataUrl = await readFileAsDataUrl(file);
-          const [meta, base64Content] = dataUrl.split(",");
-          const mimeMatch = meta?.match(/^data:(.*?);base64$/);
-          return {
-            file_name: file.name,
-            mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
-            content_base64: base64Content ?? "",
-          };
-        }),
-      );
-      const payload = {
+      const attachmentsPayload =
+        expenseForm.files.length > 0
+          ? await Promise.all(
+              expenseForm.files.map(async (file) => {
+                const dataUrl = await readFileAsDataUrl(file);
+                const [meta, base64Content] = dataUrl.split(",");
+                const mimeMatch = meta?.match(/^data:(.*?);base64$/);
+                return {
+                  file_name: file.name,
+                  mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
+                  content_base64: base64Content ?? "",
+                };
+              }),
+            )
+          : [];
+      const basePayload = {
         plate: expenseForm.plate.trim().toUpperCase(),
         category: expenseForm.category,
         amount: parsedAmount,
         description: expenseForm.description.trim() || null,
-        expense_date: expenseForm.createdAt,
-        attachments: attachmentsPayload,
-        admin_password: adminPassword.trim(),
       };
-      const res = await fetch(apiUrl("/api/expenses"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (!res.ok) throw new Error(await extractErrorMessage(res));
-      await res.json();
-      await loadExpenses();
+      if (editingExpenseId) {
+        const res = await fetch(apiUrl(`/api/expenses/${editingExpenseId}`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...basePayload,
+            expense_date: expenseForm.createdAt,
+            attachments: attachmentsPayload,
+            admin_password: adminPassword.trim(),
+          }),
+        });
+        if (!res.ok) throw new Error(await extractErrorMessage(res));
+        await res.json();
+        await loadExpenses();
+        setEditingExpenseId(null);
+        flashMessage(setExpenseMessage, "Masraf güncellendi");
+      } else {
+        const res = await fetch(apiUrl("/api/expenses"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...basePayload,
+            expense_date: expenseForm.createdAt,
+            attachments: attachmentsPayload,
+            admin_password: adminPassword.trim(),
+          }),
+        });
+        if (!res.ok) throw new Error(await extractErrorMessage(res));
+        await res.json();
+        await loadExpenses();
+        flashMessage(setExpenseMessage, "Masraf kaydı eklendi");
+      }
       setExpenseListError(null);
-      setExpenseForm({
-        plate: "",
-        category: expenseForm.category,
-        amount: "",
-        description: "",
-        createdAt: expenseForm.createdAt,
-        files: [],
-      });
+      setExpenseForm(createInitialExpenseFormState());
       setExpenseFileInputKey(Date.now());
-      flashMessage(setExpenseMessage, "Masraf kaydı eklendi");
     } catch (err) {
       console.error(err);
       setExpenseError((err as Error).message || "Masraf kaydedilemedi");
@@ -1124,7 +1220,7 @@ export default function DashboardPage() {
           <header>
             <h2 className="text-2xl font-semibold text-white">Hasar Takibi</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Hasar kayıtlarını oluşturun ve görseller yükleyin. Kayıtlar yalnızca bu oturumda saklanır.
+              Hasar kayıtlarını oluşturun ve görseller yükleyin. Kayıtlar veritabanında saklanır.
             </p>
           </header>
 
@@ -1133,10 +1229,31 @@ export default function DashboardPage() {
               className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
               onSubmit={handleDamageSubmit}
             >
-              <div>
-                <h3 className="text-lg font-semibold text-white">Hasar Kaydı Oluştur</h3>
-                <p className="text-xs text-slate-400">Plaka, tarih ve hasar detaylarını girin.</p>
+              <div className="mb-1 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Hasar Kaydı Oluştur</h3>
+                  <p className="text-xs text-slate-400">
+                    Plaka, tarih ve hasar detaylarını girin{editingDamageId ? ", ardından kaydı güncelleyin" : ""}.
+                  </p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-400/50 bg-rose-500/20 text-rose-100">
+                  🛠️
+                </span>
               </div>
+              {editingDamageId ? (
+                <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>#{editingDamageId} numaralı hasar kaydını düzenliyorsunuz.</span>
+                    <button
+                      type="button"
+                      onClick={cancelDamageEdit}
+                      className="rounded border border-amber-300/50 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-100 transition hover:border-amber-200/80 hover:bg-amber-400/20"
+                    >
+                      İptal
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
               <input
                 className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-rose-400 focus:outline-none"
@@ -1220,7 +1337,7 @@ export default function DashboardPage() {
                 disabled={damageBusy}
                 className="inline-flex items-center justify-center rounded-lg border border-rose-400/40 bg-rose-500/20 px-4 py-2 text-sm font-medium text-rose-100 transition hover:border-rose-300/70 hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {damageBusy ? "Kaydediliyor..." : "Hasar Kaydet"}
+                {damageBusy ? "Kaydediliyor..." : editingDamageId ? "Hasarı Güncelle" : "Hasar Kaydet"}
               </button>
             </form>
 
@@ -1252,7 +1369,16 @@ export default function DashboardPage() {
                     >
                       <div className="flex items-center justify-between text-xs text-slate-300">
                         <span className="font-semibold text-white">{entry.plate}</span>
-                        <span>{new Date(entry.occurredAt).toLocaleDateString("tr-TR")}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{new Date(entry.occurredAt).toLocaleDateString("tr-TR")}</span>
+                          <button
+                            type="button"
+                            onClick={() => startDamageEdit(entry)}
+                            className="rounded border border-slate-600/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:border-emerald-300/60 hover:bg-emerald-500/20 hover:text-emerald-100"
+                          >
+                            Düzenle
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-1 flex items-start justify-between gap-3">
                         <div>
@@ -1313,10 +1439,31 @@ export default function DashboardPage() {
               className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
               onSubmit={handleExpenseSubmit}
             >
-              <div>
-                <h3 className="text-lg font-semibold text-white">Masraf Ekle</h3>
-                <p className="text-xs text-slate-400">Plaka, kategori ve tutarı girin.</p>
+              <div className="mb-1 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Masraf Ekle</h3>
+                  <p className="text-xs text-slate-400">
+                    Plaka, kategori ve tutarı girin{editingExpenseId ? ", ardından kaydı güncelleyin" : ""}.
+                  </p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-indigo-400/50 bg-indigo-500/20 text-indigo-100">
+                  ₺
+                </span>
               </div>
+              {editingExpenseId ? (
+                <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>#{editingExpenseId} numaralı masraf kaydını düzenliyorsunuz.</span>
+                    <button
+                      type="button"
+                      onClick={cancelExpenseEdit}
+                      className="rounded border border-amber-300/50 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-100 transition hover:border-amber-200/80 hover:bg-amber-400/20"
+                    >
+                      İptal
+                    </button>
+                  </div>
+                </div>
+              ) : null}
               <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
               <input
                 className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
@@ -1392,7 +1539,7 @@ export default function DashboardPage() {
                 disabled={expenseBusy}
                 className="inline-flex items-center justify-center rounded-lg border border-indigo-400/40 bg-indigo-500/20 px-4 py-2 text-sm font-medium text-indigo-100 transition hover:border-indigo-300/70 hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {expenseBusy ? "Kaydediliyor..." : "Masraf Kaydet"}
+                {expenseBusy ? "Kaydediliyor..." : editingExpenseId ? "Masrafı Güncelle" : "Masraf Kaydet"}
               </button>
             </form>
 
@@ -1428,7 +1575,16 @@ export default function DashboardPage() {
                       className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 shadow-sm shadow-slate-950/20"
                     >
                       <div className="flex items-center justify-between text-xs text-slate-400">
-                        <span>{new Date(entry.createdAt).toLocaleDateString("tr-TR")}</span>
+                        <div className="flex items-center gap-2">
+                          <span>{new Date(entry.expenseDate).toLocaleDateString("tr-TR")}</span>
+                          <button
+                            type="button"
+                            onClick={() => startExpenseEdit(entry)}
+                            className="rounded border border-slate-600/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:border-emerald-300/60 hover:bg-emerald-500/20 hover:text-emerald-100"
+                          >
+                            Düzenle
+                          </button>
+                        </div>
                         <span className="inline-flex items-center rounded-full border border-indigo-400/40 bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.25em] text-indigo-100">
                           {entry.category}
                         </span>

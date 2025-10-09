@@ -441,6 +441,15 @@ class DamageCreateRequest(BaseModel):
     attachments: list[DamageAttachmentPayload] = []
     admin_password: str
 
+class DamageUpdateRequest(BaseModel):
+    plate: str | None = None
+    title: str | None = None
+    description: str | None = None
+    severity: str | None = None
+    occurred_at: date | None = None
+    attachments: list[DamageAttachmentPayload] = []
+    admin_password: str
+
 class ExpenseAttachmentPayload(BaseModel):
     file_name: str
     mime_type: str | None = None
@@ -452,6 +461,15 @@ class ExpenseCreateRequest(BaseModel):
     amount: float
     description: str | None = None
     expense_date: date
+    attachments: list[ExpenseAttachmentPayload] = []
+    admin_password: str
+
+class ExpenseUpdateRequest(BaseModel):
+    plate: str | None = None
+    category: str | None = None
+    amount: float | None = None
+    description: str | None = None
+    expense_date: date | None = None
     attachments: list[ExpenseAttachmentPayload] = []
     admin_password: str
 
@@ -1168,6 +1186,165 @@ def create_damage(body: DamageCreateRequest):
             )
         return _fetch_damage(con, row["id"])
 
+def update_damage(damage_id: int, body: DamageUpdateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    severity_label = None
+    if body.severity is not None:
+        severity_key = body.severity.strip().lower()
+        if severity_key not in DAMAGE_SEVERITIES_ALLOWED:
+            raise HTTPException(status_code=400, detail="Şiddet yalnızca Hafif, Orta veya Ağır olabilir")
+        severity_label = DAMAGE_SEVERITY_DISPLAY[severity_key]
+
+    attachments_payload = []
+    for att in body.attachments:
+        if not att.content_base64:
+            continue
+        content = _decode_base64_content(att.content_base64)
+        if not content:
+            continue
+        attachments_payload.append(
+            {
+                "file_name": os.path.basename(att.file_name) if att.file_name else "dosya",
+                "mime_type": att.mime_type or "application/octet-stream",
+                "content": content,
+            }
+        )
+
+    with engine.begin() as con:
+        existing = con.execute(
+            text(
+                """
+                SELECT id, plate FROM damages WHERE id = :id
+                """
+            ),
+            {"id": damage_id},
+        ).mappings().first()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Hasar kaydı bulunamadı")
+
+        update_fields: dict[str, object] = {}
+        if body.plate is not None:
+            plate = body.plate.strip().upper()
+            update_fields["plate"] = plate
+            update_fields["vehicle_id"] = _resolve_vehicle_id(con, plate)
+        if body.title is not None:
+            title = body.title.strip()
+            update_fields["title"] = title
+        if body.description is not None:
+            desc = body.description.strip()
+            update_fields["description"] = desc if desc else None
+        if severity_label is not None:
+            update_fields["severity"] = severity_label
+        if body.occurred_at is not None:
+            update_fields["occurred_at"] = body.occurred_at
+
+        if update_fields:
+            params = {"id": damage_id}
+            params.update(update_fields)
+            set_clause = ", ".join(f"{key} = :{key}" for key in update_fields.keys())
+            con.execute(
+                text(
+                    f"""
+                    UPDATE damages
+                    SET {set_clause}
+                    WHERE id = :id
+                    """
+                ),
+                params,
+            )
+
+        for att in attachments_payload:
+            con.execute(
+                text(
+                    """
+                    INSERT INTO damage_attachments (damage_id, file_name, mime_type, content)
+                    VALUES (:damage_id, :file_name, :mime_type, :content)
+                    """
+                ),
+                {
+                    "damage_id": damage_id,
+                    "file_name": att["file_name"],
+                    "mime_type": att["mime_type"],
+                    "content": att["content"],
+                },
+            )
+        return _fetch_damage(con, damage_id)
+
+def update_expense(expense_id: int, body: ExpenseUpdateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+
+    attachments_payload = []
+    for att in body.attachments:
+        if not att.content_base64:
+            continue
+        content = _decode_base64_content(att.content_base64)
+        if not content:
+            continue
+        attachments_payload.append(
+            {
+                "file_name": os.path.basename(att.file_name) if att.file_name else "belge",
+                "mime_type": att.mime_type or "application/octet-stream",
+                "content": content,
+            }
+        )
+
+    with engine.begin() as con:
+        existing = con.execute(
+            text("SELECT id, plate FROM expenses WHERE id = :id"),
+            {"id": expense_id},
+        ).mappings().first()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Masraf kaydı bulunamadı")
+
+        update_fields: dict[str, object] = {}
+        if body.plate is not None:
+            plate = body.plate.strip().upper()
+            update_fields["plate"] = plate
+            update_fields["vehicle_id"] = _resolve_vehicle_id(con, plate)
+        if body.category is not None:
+            update_fields["category"] = body.category.strip()
+        if body.amount is not None:
+            update_fields["amount"] = body.amount
+        if body.description is not None:
+            desc = body.description.strip()
+            update_fields["description"] = desc if desc else None
+        if body.expense_date is not None:
+            update_fields["expense_date"] = body.expense_date
+
+        if update_fields:
+            params = {"id": expense_id}
+            params.update(update_fields)
+            set_clause = ", ".join(f"{key} = :{key}" for key in update_fields.keys())
+            con.execute(
+                text(
+                    f"""
+                    UPDATE expenses
+                    SET {set_clause}
+                    WHERE id = :id
+                    """
+                ),
+                params,
+            )
+
+        for att in attachments_payload:
+            con.execute(
+                text(
+                    """
+                    INSERT INTO expense_attachments (expense_id, file_name, mime_type, content)
+                    VALUES (:expense_id, :file_name, :mime_type, :content)
+                    """
+                ),
+                {
+                    "expense_id": expense_id,
+                    "file_name": att["file_name"],
+                    "mime_type": att["mime_type"],
+                    "content": att["content"],
+                },
+            )
+        return _fetch_expense(con, expense_id)
+
 def list_expenses():
     with engine.begin() as con:
         rows = con.execute(
@@ -1622,6 +1799,10 @@ def damages_api():
 def create_damage_api(body: DamageCreateRequest):
     return create_damage(body)
 
+@app.put("/api/damages/{damage_id}")
+def update_damage_api(damage_id: int, body: DamageUpdateRequest):
+    return update_damage(damage_id, body)
+
 @app.get("/api/expenses")
 def expenses_api():
     return list_expenses()
@@ -1629,6 +1810,10 @@ def expenses_api():
 @app.post("/api/expenses", status_code=201)
 def create_expense_api(body: ExpenseCreateRequest):
     return create_expense(body)
+
+@app.put("/api/expenses/{expense_id}")
+def update_expense_api(expense_id: int, body: ExpenseUpdateRequest):
+    return update_expense(expense_id, body)
 
 @app.post("/api/debug/run_notifications")
 def debug_run_notifications_api(
