@@ -116,6 +116,24 @@ const DOC_STATUS_META: Record<"critical" | "warning" | "ok" | "expired", { label
   expired: { label: "Süresi Dolmuş", description: "Geçmiş belgeler" },
 };
 
+const statusColor = (status: string) => {
+  switch (status) {
+    case "critical":
+      return "bg-rose-500";
+    case "warning":
+      return "bg-amber-400";
+    case "ok":
+      return "bg-emerald-400";
+    case "expired":
+      return "bg-slate-500";
+    default:
+      return "bg-slate-500";
+  }
+};
+
+const statusMeta = (status: string) =>
+  DOC_STATUS_META[status as keyof typeof DOC_STATUS_META] ?? { label: "Durum", description: "" };
+
 export default function DashboardPage() {
   const [docs, setDocs] = useState<UpcomingDocument[]>([]);
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
@@ -365,7 +383,7 @@ export default function DashboardPage() {
 
           {error ? <p className="rounded-xl border border-rose-500/40 bg-rose-900/40 p-4 text-sm text-rose-100">{error}</p> : null}
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
             {loading
               ? Array.from({ length: 6 }).map((_, index) => (
                   <div
@@ -387,42 +405,60 @@ export default function DashboardPage() {
               : docs.map((doc) => (
                   <article
                     key={doc.id ?? doc.doc_id}
-                    className={`group flex h-full flex-col justify-between rounded-2xl border transition duration-200 hover:-translate-y-1 hover:shadow-[0_30px_60px_-45px_rgba(15,23,42,0.95)] ${statusClass(
+                    className={`group flex h-full flex-col justify-between overflow-hidden rounded-2xl border transition duration-200 hover:-translate-y-1 hover:shadow-[0_30px_60px_-45px_rgba(15,23,42,0.95)] ${statusClass(
                       doc.status,
                     )}`}
                   >
-                    <div className="flex flex-col gap-4 p-5">
-                      <div className="flex items-center justify-between gap-3">
-                        <Badge className="border-white/20 bg-black/15 text-white/90">{doc.plate}</Badge>
-                        <Badge className="border-white/20 bg-black/15 text-white/90">{formatDaysLabel(doc.days_left)}</Badge>
-                      </div>
-                      <button
-                        className="text-left text-lg font-semibold capitalize text-white underline decoration-dotted underline-offset-4 hover:text-white"
-                        onClick={() => openCompareFor(doc.doc_type)}
-                        title="Bu belge türü için hangi araçlarda var/yok karşılaştır"
-                      >
-                        {docTypeLabel(doc.doc_type)}
-                      </button>
-                      <div className="grid grid-cols-1 gap-3 text-sm text-white/85 sm:grid-cols-2">
-                        <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs sm:text-sm">
-                          <span className="text-white/60">Başlangıç</span>
-                          <span>{doc.valid_from ? new Date(doc.valid_from).toLocaleDateString("tr-TR") : "-"}</span>
+                    <div className="relative">
+                      <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-transparent via-white/40 to-transparent opacity-40" />
+                      <div className="flex items-start justify-between gap-3 border-b border-white/10 bg-black/20 px-5 py-4">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 text-xs uppercase tracking-[0.3em] text-white/70">
+                            <span className={`h-2.5 w-2.5 rounded-full ${statusColor(doc.status)}`} />
+                            {statusMeta(doc.status).label}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge className="border-white/15 bg-black/20 text-white/90">{doc.plate}</Badge>
+                            <button
+                              className="text-left text-base font-semibold capitalize text-white underline decoration-dotted underline-offset-4 hover:text-white"
+                              onClick={() => openCompareFor(doc.doc_type)}
+                              title="Bu belge türü için hangi araçlarda var/yok karşılaştır"
+                            >
+                              {docTypeLabel(doc.doc_type)}
+                            </button>
+                          </div>
                         </div>
-                        <div className="flex items-center justify-between rounded-lg border border-white/10 bg-black/10 px-3 py-2 text-xs sm:text-sm">
-                          <span className="text-white/60">Bitiş</span>
-                          <span>{new Date(doc.valid_to).toLocaleDateString("tr-TR")}</span>
+                        <div className="rounded-full border border-white/15 bg-black/20 px-3 py-1 text-xs font-medium text-white/80">
+                          {formatDaysLabel(doc.days_left)}
                         </div>
                       </div>
+                    </div>
+                    <div className="flex flex-col gap-4 px-5 py-5">
+                      <dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-2">
+                        <div className="rounded-xl border border-white/10 bg-black/15 p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+                          <dt className="text-xs uppercase tracking-[0.25em] text-white/60">Başlangıç</dt>
+                          <dd className="mt-1 text-sm font-medium text-white">
+                            {doc.valid_from ? new Date(doc.valid_from).toLocaleDateString("tr-TR") : "-"}
+                          </dd>
+                        </div>
+                        <div className="rounded-xl border border-white/10 bg-black/15 p-3 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+                          <dt className="text-xs uppercase tracking-[0.25em] text-white/60">Bitiş</dt>
+                          <dd className="mt-1 text-sm font-medium text-white">
+                            {new Date(doc.valid_to).toLocaleDateString("tr-TR")}
+                          </dd>
+                        </div>
+                      </dl>
                       {doc.note ? (
-                        <p className="rounded-lg border border-white/10 bg-black/10 p-3 text-xs text-white/80 sm:text-sm">
-                          <span className="font-medium text-white/70">Not: </span>
-                          {doc.note}
-                        </p>
+                        <div className="rounded-xl border border-white/10 bg-black/15 p-3 text-sm text-white/80 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]">
+                          <span className="block text-xs uppercase tracking-[0.25em] text-white/60">Not</span>
+                          <span className="mt-1 block text-sm">{doc.note}</span>
+                        </div>
                       ) : null}
                       {doc.responsible_email ? (
-                        <p className="text-xs text-white/60">
-                          Sorumlu: <span className="font-medium text-white/80">{doc.responsible_email}</span>
-                        </p>
+                        <div className="flex items-center justify-between rounded-xl border border-white/10 bg-black/15 px-3 py-2 text-xs text-white/70 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)] sm:text-sm">
+                          <span>Sorumlu</span>
+                          <span className="font-medium text-white/85">{doc.responsible_email}</span>
+                        </div>
                       ) : null}
                     </div>
                   </article>
@@ -444,11 +480,11 @@ export default function DashboardPage() {
           {vehicles.length === 0 && !loading ? (
             <p className="rounded-2xl border border-slate-800/70 bg-slate-900/70 p-5 text-slate-300">Kayıtlı araç bulunmamaktadır.</p>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-3">
               {vehicles.map((vehicle) => (
                 <article
                   key={vehicle.id}
-                  className="group cursor-pointer rounded-2xl border border-slate-800/70 bg-slate-900/70 p-5 shadow-[0_25px_60px_-45px_rgba(15,23,42,0.9)] transition hover:-translate-y-1 hover:shadow-[0_35px_80px_-45px_rgba(15,23,42,0.95)]"
+                  className="group cursor-pointer overflow-hidden rounded-2xl border border-slate-800/70 bg-slate-900/70 shadow-[0_25px_60px_-45px_rgba(15,23,42,0.9)] transition hover:-translate-y-1 hover:shadow-[0_35px_80px_-45px_rgba(15,23,42,0.95)]"
                   onClick={() => openVehicleDetails(vehicle)}
                   role="button"
                   tabIndex={0}
@@ -456,26 +492,45 @@ export default function DashboardPage() {
                     if (event.key === "Enter") openVehicleDetails(vehicle);
                   }}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="text-xl font-semibold text-white">{vehicle.plate}</h3>
-                      {(vehicle.make || vehicle.model || vehicle.year) && (
-                        <p className="mt-1 text-sm text-slate-300">
-                          {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(" ")}
-                        </p>
-                      )}
+                  <div className="border-b border-slate-800/60 bg-gradient-to-r from-slate-900 via-slate-900/80 to-slate-900 px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-xl font-semibold text-white">{vehicle.plate}</h3>
+                        {(vehicle.make || vehicle.model || vehicle.year) && (
+                          <p className="mt-1 text-sm text-slate-300">
+                            {[vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(" ")}
+                          </p>
+                        )}
+                      </div>
+                      <Badge className="border-white/15 bg-black/10 text-white/90">{vehicle.document_count} belge</Badge>
                     </div>
-                    <Badge className="border-white/15 bg-black/10 text-white/90">{vehicle.document_count} belge</Badge>
                   </div>
-                  <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-slate-300">
-                    <span className="rounded-full border border-slate-700/70 px-3 py-1">
-                      Kayıt: {new Date(vehicle.created_at).toLocaleDateString("tr-TR")}
-                    </span>
-                    <span className="rounded-full border border-slate-700/70 px-3 py-1">
-                      Durum: {vehicle.document_count > 0 ? "Belgeli" : "Eksik"}
-                    </span>
+                  <div className="space-y-4 px-5 py-4">
+                    <dl className="grid grid-cols-1 gap-3 text-sm text-slate-200 sm:grid-cols-2">
+                      <div className="rounded-xl border border-slate-700/70 bg-black/20 px-4 py-3">
+                        <dt className="text-xs uppercase tracking-[0.25em] text-slate-400">Kayıt Tarihi</dt>
+                        <dd className="mt-1 text-sm font-medium text-white">
+                          {new Date(vehicle.created_at).toLocaleDateString("tr-TR")}
+                        </dd>
+                      </div>
+                      <div className="rounded-xl border border-slate-700/70 bg-black/20 px-4 py-3">
+                        <dt className="text-xs uppercase tracking-[0.25em] text-slate-400">Belge Durumu</dt>
+                        <dd className="mt-1 flex items-center gap-2 text-sm font-medium text-white">
+                          <span className={`h-2.5 w-2.5 rounded-full ${vehicle.document_count > 0 ? "bg-emerald-400" : "bg-rose-400"}`} />
+                          {vehicle.document_count > 0 ? "Belgeli" : "Eksik"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] uppercase tracking-[0.25em] text-slate-500">
+                      <span className="rounded-full border border-slate-700/70 px-3 py-1">
+                        {vehicle.documents?.length ?? vehicle.document_count} kayıtlı belge
+                      </span>
+                      <span className="rounded-full border border-slate-700/70 px-3 py-1">
+                        {vehicle.make ? vehicle.make : "Marka Yok"}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-400 transition group-hover:text-slate-200">Detay görmek için tıklayın</p>
                   </div>
-                  <p className="mt-4 text-[11px] text-slate-400 transition group-hover:text-slate-200">Detay görmek için tıklayın</p>
                 </article>
               ))}
             </div>
