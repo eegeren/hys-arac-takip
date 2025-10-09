@@ -35,7 +35,7 @@ RESEND_BASE_URL = os.getenv("RESEND_BASE_URL","https://api.resend.com")
 RESEND_TEST_TO = os.getenv("RESEND_TEST_TO","").strip()  # If set, force all Resend mails to go to this address (sandbox)
 
 THRESHOLDS = [
-    int(x) for x in os.getenv("NOTIFY_THRESHOLDS_DAYS", "30,15,10,7,1")
+    int(x) for x in os.getenv("NOTIFY_THRESHOLDS_DAYS", "30,20,15,10,7,3,2,1")
     .replace(" ", "")
     .split(",")
     if x.strip() != ""
