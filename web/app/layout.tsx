@@ -8,8 +8,11 @@ export const metadata = {
 };
 
 const navItems = [
-  { href: "/", label: "Dashboard" },
-  { href: "/vehicles", label: "Araçlar" },
+  { href: "/?tab=vehicles", label: "Araçlar" },
+  { href: "/?tab=vehicle-create", label: "Araç Ekle" },
+  { href: "/?tab=damages", label: "Hasarlar" },
+  { href: "/?tab=expenses", label: "Masraflar" },
+  { href: "/?tab=documents", label: "Belgeler" },
 ];
 
 export default function RootLayout({ children }: { children: ReactNode }) {
