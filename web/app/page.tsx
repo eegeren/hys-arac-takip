@@ -42,7 +42,7 @@ type Vehicle = {
   documents?: VehicleDocument[];
 };
 
-type TabId = "vehicles" | "vehicle-create" | "damages" | "expenses" | "documents";
+type TabId = "vehicles" | "vehicle-create" | "assignments" | "damages" | "expenses" | "documents";
 
 type VehicleFormState = {
   plate: string;
@@ -100,6 +100,26 @@ type ExpenseEntry = {
   attachments: ExpenseAttachment[];
 };
 
+type AssignmentAttachment = {
+  id: number;
+  name: string;
+  mimeType: string | null;
+  preview: string;
+  size: number | null;
+};
+
+type AssignmentEntry = {
+  id: number;
+  plate: string;
+  personName: string;
+  personTitle: string | null;
+  assignmentDate: string;
+  expectedReturnDate: string | null;
+  description: string;
+  createdAt: string;
+  attachments: AssignmentAttachment[];
+};
+
 type DamageFormState = {
   plate: string;
   title: string;
@@ -118,6 +138,15 @@ type ExpenseFormState = {
   files: File[];
 };
 
+type AssignmentFormState = {
+  plate: string;
+  personName: string;
+  personTitle: string;
+  assignmentDate: string;
+  expectedReturnDate: string;
+  description: string;
+  files: File[];
+};
 
 type DamageApiResponse = {
   id: number;
@@ -155,9 +184,29 @@ type ExpenseApiResponse = {
   }>;
 };
 
+type AssignmentApiResponse = {
+  id: number;
+  vehicle_id: number | null;
+  plate: string;
+  person_name: string;
+  person_title: string | null;
+  assignment_date: string | null;
+  expected_return_date: string | null;
+  description: string | null;
+  created_at: string | null;
+  attachments: Array<{
+    id: number;
+    file_name: string;
+    mime_type: string | null;
+    size_bytes: number | null;
+    content_base64: string;
+  }>;
+};
+
 const tabs: Array<{ id: TabId; label: string }> = [
   { id: "vehicles", label: "Araçlar" },
   { id: "vehicle-create", label: "Araç Ekle" },
+  { id: "assignments", label: "Zimmetler" },
   { id: "damages", label: "Hasarlar" },
   { id: "expenses", label: "Masraflar" },
   { id: "documents", label: "Belgeler" },
@@ -265,6 +314,16 @@ const createInitialExpenseFormState = (): ExpenseFormState => ({
   files: [],
 });
 
+const createInitialAssignmentFormState = (): AssignmentFormState => ({
+  plate: "",
+  personName: "",
+  personTitle: "",
+  assignmentDate: new Date().toISOString().split("T")[0],
+  expectedReturnDate: "",
+  description: "",
+  files: [],
+});
+
 const readFileAsDataUrl = (file: File) =>
   new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -306,6 +365,24 @@ const adaptExpenseResponse = (item: ExpenseApiResponse): ExpenseEntry => ({
   description: item.description ?? "",
   createdAt: item.created_at ?? item.expense_date ?? new Date().toISOString(),
   expenseDate: item.expense_date ?? item.created_at ?? new Date().toISOString(),
+  attachments: item.attachments.map((attachment) => ({
+    id: attachment.id,
+    name: attachment.file_name,
+    mimeType: attachment.mime_type ?? null,
+    preview: toDataUrl(attachment.mime_type, attachment.content_base64),
+    size: attachment.size_bytes ?? null,
+  })),
+});
+
+const adaptAssignmentResponse = (item: AssignmentApiResponse): AssignmentEntry => ({
+  id: item.id,
+  plate: item.plate,
+  personName: item.person_name,
+  personTitle: item.person_title ?? null,
+  assignmentDate: item.assignment_date ?? item.created_at ?? new Date().toISOString(),
+  expectedReturnDate: item.expected_return_date ?? null,
+  description: item.description ?? "",
+  createdAt: item.created_at ?? item.assignment_date ?? new Date().toISOString(),
   attachments: item.attachments.map((attachment) => ({
     id: attachment.id,
     name: attachment.file_name,
@@ -387,6 +464,15 @@ export default function DashboardPage() {
   const [documentFormBusy, setDocumentFormBusy] = useState(false);
   const [documentFormError, setDocumentFormError] = useState<string | null>(null);
   const [documentFormMessage, setDocumentFormMessage] = useState<string | null>(null);
+
+  const [assignmentForm, setAssignmentForm] = useState<AssignmentFormState>(() => createInitialAssignmentFormState());
+  const [assignmentLog, setAssignmentLog] = useState<AssignmentEntry[]>([]);
+  const [assignmentError, setAssignmentError] = useState<string | null>(null);
+  const [assignmentMessage, setAssignmentMessage] = useState<string | null>(null);
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [assignmentFileInputKey, setAssignmentFileInputKey] = useState(() => Date.now());
+  const [assignmentListLoading, setAssignmentListLoading] = useState(true);
+  const [assignmentListError, setAssignmentListError] = useState<string | null>(null);
 
   const [damageForm, setDamageForm] = useState<DamageFormState>(() => ({
     plate: "",
@@ -496,6 +582,22 @@ export default function DashboardPage() {
     }
   }, []);
 
+  const loadAssignments = useCallback(async () => {
+    setAssignmentListLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/assignments"));
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      const data = (await res.json()) as AssignmentApiResponse[];
+      setAssignmentLog(data.map(adaptAssignmentResponse));
+      setAssignmentListError(null);
+    } catch (err) {
+      console.error(err);
+      setAssignmentListError((err as Error).message || "Zimmet kayıtları çekilirken hata oluştu");
+    } finally {
+      setAssignmentListLoading(false);
+    }
+  }, []);
+
   const loadDamages = useCallback(async () => {
     setDamageListLoading(true);
     try {
@@ -535,6 +637,10 @@ export default function DashboardPage() {
   useEffect(() => {
     loadVehicles();
   }, [loadVehicles]);
+
+  useEffect(() => {
+    loadAssignments();
+  }, [loadAssignments]);
 
   useEffect(() => {
     loadDamages();
@@ -686,6 +792,70 @@ export default function DashboardPage() {
       setError((err as Error).message || "Belge kaydedilemedi");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleAssignmentSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAssignmentError(null);
+    if (!adminPassword.trim()) {
+      setAssignmentError("Yönetici şifresi gerekli.");
+      return;
+    }
+    if (!assignmentForm.plate.trim() || !assignmentForm.personName.trim()) {
+      setAssignmentError("Plaka ve personel adı zorunludur.");
+      return;
+    }
+
+    setAssignmentBusy(true);
+    try {
+      const attachmentsPayload = await Promise.all(
+        assignmentForm.files.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file);
+          const [meta, base64Content] = dataUrl.split(",");
+          const mimeMatch = meta?.match(/^data:(.*?);base64$/);
+          return {
+            file_name: file.name,
+            mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
+            content_base64: base64Content ?? "",
+          };
+        }),
+      );
+      const payload = {
+        plate: assignmentForm.plate.trim().toUpperCase(),
+        person_name: assignmentForm.personName.trim(),
+        person_title: assignmentForm.personTitle.trim() || null,
+        assignment_date: assignmentForm.assignmentDate,
+        expected_return_date: assignmentForm.expectedReturnDate ? assignmentForm.expectedReturnDate : null,
+        description: assignmentForm.description.trim() || null,
+        attachments: attachmentsPayload,
+        admin_password: adminPassword.trim(),
+      };
+      const res = await fetch(apiUrl("/api/assignments"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      await res.json();
+      await loadAssignments();
+      setAssignmentListError(null);
+      setAssignmentForm({
+        plate: "",
+        personName: "",
+        personTitle: "",
+        assignmentDate: assignmentForm.assignmentDate,
+        expectedReturnDate: assignmentForm.expectedReturnDate,
+        description: "",
+        files: [],
+      });
+      setAssignmentFileInputKey(Date.now());
+      flashMessage(setAssignmentMessage, "Zimmet kaydı eklendi");
+    } catch (err) {
+      console.error(err);
+      setAssignmentError((err as Error).message || "Zimmet kaydedilemedi");
+    } finally {
+      setAssignmentBusy(false);
     }
   };
 
@@ -1153,6 +1323,200 @@ export default function DashboardPage() {
                 {quickDocBusy ? "Kaydediliyor..." : "Belge Kaydet"}
               </button>
             </form>
+          </div>
+        </section>
+      );
+    }
+
+    if (activeTab === "assignments") {
+      return (
+        <section className="space-y-6">
+          <header>
+            <h2 className="text-2xl font-semibold text-white">Araç Zimmetleri</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Personellere teslim edilen araçları kaydedin, teslim fotoğraflarını ekleyin.
+            </p>
+          </header>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
+            <form
+              className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
+              onSubmit={handleAssignmentSubmit}
+            >
+              <div>
+                <h3 className="text-lg font-semibold text-white">Zimmet Kaydı Oluştur</h3>
+                <p className="text-xs text-slate-400">Plaka ve personel bilgilerini girin.</p>
+              </div>
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
+              <input
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                placeholder="34 ABC 123"
+                value={assignmentForm.plate}
+                onChange={(event) => setAssignmentForm((prev) => ({ ...prev, plate: event.target.value }))}
+              />
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Personel Adı</label>
+              <input
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                placeholder="Ad Soyad"
+                value={assignmentForm.personName}
+                onChange={(event) => setAssignmentForm((prev) => ({ ...prev, personName: event.target.value }))}
+              />
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Görev / Departman</label>
+              <input
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                placeholder="Depo Sorumlusu"
+                value={assignmentForm.personTitle}
+                onChange={(event) => setAssignmentForm((prev) => ({ ...prev, personTitle: event.target.value }))}
+              />
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Zimmet Tarihi</label>
+                  <input
+                    type="date"
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    value={assignmentForm.assignmentDate}
+                    onChange={(event) =>
+                      setAssignmentForm((prev) => ({ ...prev, assignmentDate: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Beklenen Teslim</label>
+                  <input
+                    type="date"
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    value={assignmentForm.expectedReturnDate}
+                    onChange={(event) =>
+                      setAssignmentForm((prev) => ({ ...prev, expectedReturnDate: event.target.value }))
+                    }
+                  />
+                </div>
+              </div>
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Açıklama</label>
+              <textarea
+                className="min-h-[90px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                placeholder="Teslim şartları, ekipmanlar vb."
+                value={assignmentForm.description}
+                onChange={(event) => setAssignmentForm((prev) => ({ ...prev, description: event.target.value }))}
+              />
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Fotoğraf / Görsel</label>
+              <input
+                key={assignmentFileInputKey}
+                type="file"
+                accept="image/*,application/pdf"
+                multiple
+                className="block w-full cursor-pointer rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-sky-500/20 file:px-3 file:py-1 file:text-sky-100 hover:file:bg-sky-500/30"
+                onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                  const files = event.target.files ? Array.from(event.target.files) : [];
+                  setAssignmentForm((prev) => ({ ...prev, files }));
+                }}
+              />
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+              <input
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                placeholder="Yönetici şifresi"
+                type="password"
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
+              />
+              {assignmentError ? (
+                <p className="mt-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+                  {assignmentError}
+                </p>
+              ) : null}
+              {assignmentMessage ? (
+                <p className="mt-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                  {assignmentMessage}
+                </p>
+              ) : null}
+              <button
+                type="submit"
+                disabled={assignmentBusy}
+                className="inline-flex items-center justify-center rounded-lg border border-sky-400/40 bg-sky-500/20 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-300/70 hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {assignmentBusy ? "Kaydediliyor..." : "Zimmet Kaydet"}
+              </button>
+            </form>
+
+            <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Zimmet Kayıtları</h3>
+                <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                  {assignmentLog.length} kayıt
+                </span>
+              </div>
+              {assignmentListError ? (
+                <p className="rounded-lg border border-sky-400/30 bg-sky-500/10 p-4 text-sm text-sky-100">
+                  {assignmentListError}
+                </p>
+              ) : assignmentListLoading ? (
+                <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
+                  Zimmet kayıtları yükleniyor...
+                </p>
+              ) : assignmentLog.length === 0 ? (
+                <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
+                  Henüz zimmet kaydı eklemediniz.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {assignmentLog.map((entry) => (
+                    <article
+                      key={entry.id}
+                      className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 shadow-sm shadow-slate-950/20"
+                    >
+                      <div className="flex items-center justify-between text-xs text-slate-300">
+                        <span className="font-semibold text-white">{entry.plate}</span>
+                        <span>
+                          {entry.assignmentDate
+                            ? new Date(entry.assignmentDate).toLocaleDateString("tr-TR")
+                            : "-"}
+                        </span>
+                      </div>
+                      <div className="mt-2">
+                        <p className="text-sm font-medium text-white">{entry.personName}</p>
+                        {entry.personTitle ? (
+                          <p className="text-xs text-slate-300">{entry.personTitle}</p>
+                        ) : null}
+                      </div>
+                      {entry.expectedReturnDate ? (
+                        <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-slate-400">
+                          Beklenen Teslim:{" "}
+                          {new Date(entry.expectedReturnDate).toLocaleDateString("tr-TR")}
+                        </p>
+                      ) : null}
+                      {entry.description ? (
+                        <p className="mt-2 text-xs text-slate-300">{entry.description}</p>
+                      ) : null}
+                      {entry.attachments.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-3">
+                          {entry.attachments.map((attachment) => (
+                            <figure
+                              key={attachment.id}
+                              className="flex flex-col overflow-hidden rounded-lg border border-slate-800 bg-slate-900/80"
+                            >
+                              {attachment.preview.startsWith("data:application/pdf") ? (
+                                <div className="flex h-24 w-32 items-center justify-center bg-slate-800 text-xs text-slate-200">
+                                  PDF
+                                </div>
+                              ) : (
+                                <img
+                                  src={attachment.preview}
+                                  alt={attachment.name}
+                                  className="h-24 w-32 object-cover"
+                                />
+                              )}
+                              <figcaption className="truncate px-2 py-1 text-[11px] text-slate-300">
+                                {attachment.name}
+                              </figcaption>
+                            </figure>
+                          ))}
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </section>
       );

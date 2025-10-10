@@ -86,6 +86,25 @@ def _ensure_tables():
       content BYTEA NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
+    CREATE TABLE IF NOT EXISTS assignments (
+      id SERIAL PRIMARY KEY,
+      vehicle_id INT REFERENCES vehicles(id) ON DELETE SET NULL,
+      plate TEXT NOT NULL,
+      person_name TEXT NOT NULL,
+      person_title TEXT,
+      assignment_date DATE NOT NULL,
+      expected_return_date DATE,
+      description TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS assignment_attachments (
+      id SERIAL PRIMARY KEY,
+      assignment_id INT REFERENCES assignments(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      mime_type TEXT,
+      content BYTEA NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
     CREATE TABLE IF NOT EXISTS expenses (
       id SERIAL PRIMARY KEY,
       vehicle_id INT REFERENCES vehicles(id) ON DELETE SET NULL,
@@ -105,6 +124,7 @@ def _ensure_tables():
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS idx_damages_plate ON damages(plate);
+    CREATE INDEX IF NOT EXISTS idx_assignments_plate ON assignments(plate);
     CREATE INDEX IF NOT EXISTS idx_expenses_plate ON expenses(plate);
     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS responsible_person TEXT;
     """
@@ -483,6 +503,31 @@ class ExpenseUpdateRequest(BaseModel):
     description: str | None = None
     expense_date: date | None = None
     attachments: list[ExpenseAttachmentPayload] = []
+    admin_password: str
+
+class AssignmentAttachmentPayload(BaseModel):
+    file_name: str
+    mime_type: str | None = None
+    content_base64: str
+
+class AssignmentCreateRequest(BaseModel):
+    plate: str
+    person_name: str
+    person_title: str | None = None
+    assignment_date: date
+    expected_return_date: date | None = None
+    description: str | None = None
+    attachments: list[AssignmentAttachmentPayload] = []
+    admin_password: str
+
+class AssignmentUpdateRequest(BaseModel):
+    plate: str | None = None
+    person_name: str | None = None
+    person_title: str | None = None
+    assignment_date: date | None = None
+    expected_return_date: date | None = None
+    description: str | None = None
+    attachments: list[AssignmentAttachmentPayload] = []
     admin_password: str
 
     @property
@@ -1081,6 +1126,29 @@ def _serialize_damage_row(row: Mapping[str, object], attachments: list[Mapping[s
         ],
     }
 
+def _serialize_assignment_row(row: Mapping[str, object], attachments: list[Mapping[str, object]]):
+    return {
+        "id": row["id"],
+        "vehicle_id": row.get("vehicle_id"),
+        "plate": row["plate"],
+        "person_name": row["person_name"],
+        "person_title": row.get("person_title"),
+        "assignment_date": row["assignment_date"].isoformat() if row.get("assignment_date") else None,
+        "expected_return_date": row["expected_return_date"].isoformat() if row.get("expected_return_date") else None,
+        "description": row.get("description"),
+        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+        "attachments": [
+            {
+                "id": att["id"],
+                "file_name": att["file_name"],
+                "mime_type": att.get("mime_type"),
+                "size_bytes": int(att["size_bytes"]) if att.get("size_bytes") is not None else None,
+                "content_base64": _encode_base64_content(att.get("content")),
+            }
+            for att in attachments
+        ],
+    }
+
 def _serialize_expense_row(row: Mapping[str, object], attachments: list[Mapping[str, object]]):
     amount = row.get("amount")
     try:
@@ -1401,6 +1469,283 @@ def delete_damage(damage_id: int, admin_password: str):
         ).mappings().first()
     if deleted is None:
         raise HTTPException(status_code=404, detail="Hasar kaydı bulunamadı")
+    return Response(status_code=204)
+
+def list_assignments():
+    with engine.begin() as con:
+        rows = con.execute(
+            text(
+                """
+                SELECT a.id,
+                       a.vehicle_id,
+                       a.plate,
+                       a.person_name,
+                       a.person_title,
+                       a.assignment_date,
+                       a.expected_return_date,
+                       a.description,
+                       a.created_at
+                FROM assignments a
+                ORDER BY a.assignment_date DESC, a.created_at DESC
+                """
+            )
+        ).mappings().all()
+        if not rows:
+            return []
+        assignment_ids = [row["id"] for row in rows]
+        attachments_map: dict[int, list[Mapping[str, object]]] = {row["id"]: [] for row in rows}
+        att_stmt = (
+            text(
+                """
+                SELECT id,
+                       assignment_id,
+                       file_name,
+                       mime_type,
+                       octet_length(content) as size_bytes,
+                       content
+                FROM assignment_attachments
+                WHERE assignment_id IN :ids
+                ORDER BY id
+                """
+            ).bindparams(bindparam("ids", expanding=True))
+            if assignment_ids
+            else None
+        )
+        if att_stmt is not None:
+            for att in con.execute(att_stmt, {"ids": assignment_ids}).mappings().all():
+                attachments_map.setdefault(att["assignment_id"], []).append(att)
+        return [_serialize_assignment_row(row, attachments_map.get(row["id"], [])) for row in rows]
+
+def _fetch_assignment(con, assignment_id: int):
+    row = con.execute(
+        text(
+            """
+            SELECT a.id,
+                   a.vehicle_id,
+                   a.plate,
+                   a.person_name,
+                   a.person_title,
+                   a.assignment_date,
+                   a.expected_return_date,
+                   a.description,
+                   a.created_at
+            FROM assignments a
+            WHERE a.id = :id
+            """
+        ),
+        {"id": assignment_id},
+    ).mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Zimmet kaydı bulunamadı")
+    attachments = con.execute(
+        text(
+            """
+            SELECT id,
+                   assignment_id,
+                   file_name,
+                   mime_type,
+                   octet_length(content) as size_bytes,
+                   content
+            FROM assignment_attachments
+            WHERE assignment_id = :id
+            ORDER BY id
+            """
+        ),
+        {"id": assignment_id},
+    ).mappings().all()
+    return _serialize_assignment_row(row, attachments)
+
+def create_assignment(body: AssignmentCreateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    plate = body.plate.strip().upper()
+    if not plate:
+        raise HTTPException(status_code=400, detail="Plaka zorunludur")
+    person_name = body.person_name.strip()
+    if not person_name:
+        raise HTTPException(status_code=400, detail="Personel adı zorunludur")
+
+    attachments_payload = []
+    for att in body.attachments:
+        if not att.content_base64:
+            continue
+        content = _decode_base64_content(att.content_base64)
+        if not content:
+            continue
+        attachments_payload.append(
+            {
+                "file_name": os.path.basename(att.file_name) if att.file_name else "dosya",
+                "mime_type": att.mime_type or "application/octet-stream",
+                "content": content,
+            }
+        )
+
+    with engine.begin() as con:
+        vehicle_id = _resolve_vehicle_id(con, plate)
+        row = con.execute(
+            text(
+                """
+                INSERT INTO assignments (
+                    vehicle_id,
+                    plate,
+                    person_name,
+                    person_title,
+                    assignment_date,
+                    expected_return_date,
+                    description
+                )
+                VALUES (
+                    :vehicle_id,
+                    :plate,
+                    :person_name,
+                    :person_title,
+                    :assignment_date,
+                    :expected_return_date,
+                    :description
+                )
+                RETURNING id
+                """
+            ),
+            {
+                "vehicle_id": vehicle_id,
+                "plate": plate,
+                "person_name": person_name,
+                "person_title": body.person_title.strip() if body.person_title else None,
+                "assignment_date": body.assignment_date,
+                "expected_return_date": body.expected_return_date,
+                "description": body.description.strip() if body.description else None,
+            },
+        ).mappings().first()
+        assignment_id = row["id"]
+        for att in attachments_payload:
+            con.execute(
+                text(
+                    """
+                    INSERT INTO assignment_attachments (
+                        assignment_id,
+                        file_name,
+                        mime_type,
+                        content
+                    )
+                    VALUES (
+                        :assignment_id,
+                        :file_name,
+                        :mime_type,
+                        :content
+                    )
+                    """
+                ),
+                {
+                    "assignment_id": assignment_id,
+                    "file_name": att["file_name"],
+                    "mime_type": att["mime_type"],
+                    "content": att["content"],
+                },
+            )
+        return _fetch_assignment(con, assignment_id)
+
+def update_assignment(assignment_id: int, body: AssignmentUpdateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+
+    attachments_payload = []
+    for att in body.attachments:
+        if not att.content_base64:
+            continue
+        content = _decode_base64_content(att.content_base64)
+        if not content:
+            continue
+        attachments_payload.append(
+            {
+                "file_name": os.path.basename(att.file_name) if att.file_name else "dosya",
+                "mime_type": att.mime_type or "application/octet-stream",
+                "content": content,
+            }
+        )
+
+    with engine.begin() as con:
+        existing = con.execute(
+            text("SELECT id FROM assignments WHERE id = :id"),
+            {"id": assignment_id},
+        ).mappings().first()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Zimmet kaydı bulunamadı")
+
+        update_fields: dict[str, object] = {}
+        if body.plate is not None:
+            plate = body.plate.strip().upper()
+            if not plate:
+                raise HTTPException(status_code=400, detail="Plaka boş olamaz")
+            update_fields["plate"] = plate
+            update_fields["vehicle_id"] = _resolve_vehicle_id(con, plate)
+        if body.person_name is not None:
+            person_name = body.person_name.strip()
+            if not person_name:
+                raise HTTPException(status_code=400, detail="Personel adı boş olamaz")
+            update_fields["person_name"] = person_name
+        if body.person_title is not None:
+            title = body.person_title.strip()
+            update_fields["person_title"] = title if title else None
+        if body.assignment_date is not None:
+            update_fields["assignment_date"] = body.assignment_date
+        if body.expected_return_date is not None:
+            update_fields["expected_return_date"] = body.expected_return_date
+        if body.description is not None:
+            desc = body.description.strip()
+            update_fields["description"] = desc if desc else None
+
+        if update_fields:
+            params = {"id": assignment_id}
+            params.update(update_fields)
+            set_clause = ", ".join(f"{key} = :{key}" for key in update_fields.keys())
+            con.execute(
+                text(
+                    f"""
+                    UPDATE assignments
+                    SET {set_clause}
+                    WHERE id = :id
+                    """
+                ),
+                params,
+            )
+
+        for att in attachments_payload:
+            con.execute(
+                text(
+                    """
+                    INSERT INTO assignment_attachments (
+                        assignment_id,
+                        file_name,
+                        mime_type,
+                        content
+                    )
+                    VALUES (
+                        :assignment_id,
+                        :file_name,
+                        :mime_type,
+                        :content
+                    )
+                    """
+                ),
+                {
+                    "assignment_id": assignment_id,
+                    "file_name": att["file_name"],
+                    "mime_type": att["mime_type"],
+                    "content": att["content"],
+                },
+            )
+        return _fetch_assignment(con, assignment_id)
+
+def delete_assignment(assignment_id: int, admin_password: str):
+    if admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    with engine.begin() as con:
+        deleted = con.execute(
+            text("DELETE FROM assignments WHERE id = :id RETURNING id"),
+            {"id": assignment_id},
+        ).mappings().first()
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="Zimmet kaydı bulunamadı")
     return Response(status_code=204)
 
 def delete_expense(expense_id: int, admin_password: str):
@@ -1932,6 +2277,22 @@ def update_damage_api(damage_id: int, body: DamageUpdateRequest):
 @app.delete("/api/damages/{damage_id}", status_code=204)
 def delete_damage_api(damage_id: int, admin_password: str = Query(..., description="Hasar silme şifresi")):
     return delete_damage(damage_id, admin_password)
+
+@app.get("/api/assignments")
+def assignments_api():
+    return list_assignments()
+
+@app.post("/api/assignments", status_code=201)
+def create_assignment_api(body: AssignmentCreateRequest):
+    return create_assignment(body)
+
+@app.put("/api/assignments/{assignment_id}")
+def update_assignment_api(assignment_id: int, body: AssignmentUpdateRequest):
+    return update_assignment(assignment_id, body)
+
+@app.delete("/api/assignments/{assignment_id}", status_code=204)
+def delete_assignment_api(assignment_id: int, admin_password: str = Query(..., description="Zimmet silme şifresi")):
+    return delete_assignment(assignment_id, admin_password)
 
 @app.get("/api/expenses")
 def expenses_api():
