@@ -517,8 +517,26 @@ class ExpenseUpdateRequest(BaseModel):
         return aliases.get(value, value)
 
 # --- Sağlık & Uptime (GET + HEAD + meta) ---
+_TRUTHY_ENV = {"1", "true", "yes", "on"}
+_FALSY_ENV = {"0", "false", "no", "off"}
+
+def _env_flag(name: str, default: str = "1") -> bool:
+    """
+    Converts environment variables into booleans.
+    Accepts common truthy/falsy strings instead of only "1".
+    """
+    raw = os.getenv(name, default)
+    if raw is None:
+        return False
+    value = raw.strip().lower()
+    if value in _TRUTHY_ENV:
+        return True
+    if value in _FALSY_ENV:
+        return False
+    return bool(value)
+
 def _scheduler_enabled() -> bool:
-    return os.getenv("ENABLE_SCHEDULER", "1") == "1"
+    return _env_flag("ENABLE_SCHEDULER", "1")
 
 def _health_payload() -> dict:
     return {
@@ -1594,7 +1612,7 @@ def debug_run_notifications(
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-if os.getenv("ENABLE_SCHEDULER", "1") == "1":
+if _scheduler_enabled():
     scheduler = BackgroundScheduler(timezone=os.getenv("TZ", "Europe/Istanbul"))
     scheduler.add_job(notify_job, "cron", hour=8, minute=0)
     scheduler.start()

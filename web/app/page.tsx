@@ -9,20 +9,17 @@ type UpcomingDocument = {
   doc_id: number;
   plate: string;
   doc_type: string;
-  doc_label?: string;
   valid_from: string | null;
   valid_to: string;
   note?: string | null;
   days_left: number | null;
   status: string;
   responsible_email?: string | null;
-  responsible_person?: string | null;
 };
 
 type VehicleDocument = {
   id: number;
   doc_type: string;
-  doc_label?: string;
   valid_from: string | null;
   valid_to: string | null;
   note?: string | null;
@@ -37,7 +34,6 @@ type Vehicle = {
   model?: string | null;
   year?: number | null;
   responsible_email?: string | null;
-  responsible_person?: string | null;
   created_at?: string | null;
   document_count: number;
   next_valid_to?: string | null;
@@ -53,7 +49,7 @@ type VehicleFormState = {
   make: string;
   model: string;
   year: string;
-  responsible_person: string;
+  responsible_email: string;
 };
 
 type DocumentFormState = {
@@ -167,28 +163,13 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: "documents", label: "Belgeler" },
 ];
 
-const DOC_TYPE_LABELS: Record<string, string> = {
-  inspection: "Muayene",
-  muayene: "Muayene",
-  k_document: "K Belgesi",
-  k: "K Belgesi",
-  k_belgesi: "K Belgesi",
-  traffic_insurance: "Trafik Sigortası",
-  insurance: "Trafik Sigortası",
-  trafik_sigortası: "Trafik Sigortası",
-  trafik_sigortasi: "Trafik Sigortası",
-  kasko: "Kasko",
-  service_oil: "Yağ Bakımı",
-  service_general: "Genel Bakım",
-};
-
 const DOCUMENT_TYPES = [
-  { value: "inspection", label: DOC_TYPE_LABELS.inspection },
-  { value: "k_document", label: DOC_TYPE_LABELS.k_document },
-  { value: "traffic_insurance", label: DOC_TYPE_LABELS.traffic_insurance },
-  { value: "kasko", label: DOC_TYPE_LABELS.kasko },
-  { value: "service_oil", label: DOC_TYPE_LABELS.service_oil },
-  { value: "service_general", label: DOC_TYPE_LABELS.service_general },
+  { value: "inspection", label: "Muayene" },
+  { value: "k_document", label: "K Belgesi" },
+  { value: "traffic_insurance", label: "Trafik Sigortası" },
+  { value: "kasko", label: "Kasko" },
+  { value: "service_oil", label: "Yağ Bakımı" },
+  { value: "service_general", label: "Genel Bakım" },
 ];
 
 const DAMAGE_SEVERITIES: DamageSeverity[] = ["Hafif", "Orta", "Ağır"];
@@ -276,14 +257,6 @@ const readFileAsDataUrl = (file: File) =>
 const toDataUrl = (mime: string | null, base64Content: string) =>
   `data:${mime ?? "application/octet-stream"};base64,${base64Content}`;
 
-const docTypeLabel = (value: string) => {
-  if (!value) return "Belge";
-  const key = value.toLowerCase().replace(/\s+/g, "_");
-  return DOC_TYPE_LABELS[key] ?? value.replace(/_/g, " ");
-};
-
-const DEFAULT_RESPONSIBLE_EMAIL = "yusufege.eren@hysavm.com";
-
 const adaptDamageResponse = (item: DamageApiResponse): DamageEntry => {
   const severity = DAMAGE_SEVERITIES.includes(item.severity as DamageSeverity)
     ? (item.severity as DamageSeverity)
@@ -306,26 +279,22 @@ const adaptDamageResponse = (item: DamageApiResponse): DamageEntry => {
   };
 };
 
-const adaptExpenseResponse = (item: ExpenseApiResponse): ExpenseEntry => {
-  const expenseDate = item.expense_date ?? item.created_at ?? new Date().toISOString();
-  const createdAt = item.created_at ?? expenseDate;
-  return {
-    id: item.id,
-    plate: item.plate,
-    category: item.category,
-    amount: typeof item.amount === "number" ? item.amount : Number(item.amount ?? 0),
-    description: item.description ?? "",
-    createdAt,
-    expenseDate,
-    attachments: item.attachments.map((attachment) => ({
-      id: attachment.id,
-      name: attachment.file_name,
-      mimeType: attachment.mime_type ?? null,
-      preview: toDataUrl(attachment.mime_type, attachment.content_base64),
-      size: attachment.size_bytes ?? null,
-    })),
-  };
-};
+const adaptExpenseResponse = (item: ExpenseApiResponse): ExpenseEntry => ({
+  id: item.id,
+  plate: item.plate,
+  category: item.category,
+  amount: typeof item.amount === "number" ? item.amount : Number(item.amount ?? 0),
+  description: item.description ?? "",
+  createdAt: item.created_at ?? item.expense_date ?? new Date().toISOString(),
+  expenseDate: item.expense_date ?? item.created_at ?? new Date().toISOString(),
+  attachments: item.attachments.map((attachment) => ({
+    id: attachment.id,
+    name: attachment.file_name,
+    mimeType: attachment.mime_type ?? null,
+    preview: toDataUrl(attachment.mime_type, attachment.content_base64),
+    size: attachment.size_bytes ?? null,
+  })),
+});
 
 const extractErrorMessage = async (res: Response) => {
   const contentType = res.headers.get("content-type") ?? "";
@@ -372,7 +341,7 @@ export default function DashboardPage() {
     make: "",
     model: "",
     year: "",
-    responsible_person: "",
+    responsible_email: "",
   });
   const [vehicleFormBusy, setVehicleFormBusy] = useState(false);
   const [vehicleFormError, setVehicleFormError] = useState<string | null>(null);
@@ -400,7 +369,14 @@ export default function DashboardPage() {
   const [documentFormError, setDocumentFormError] = useState<string | null>(null);
   const [documentFormMessage, setDocumentFormMessage] = useState<string | null>(null);
 
-  const [damageForm, setDamageForm] = useState<DamageFormState>(() => createInitialDamageFormState());
+  const [damageForm, setDamageForm] = useState<DamageFormState>(() => ({
+    plate: "",
+    title: "",
+    description: "",
+    severity: "Hafif",
+    occurredAt: new Date().toISOString().split("T")[0],
+    files: [],
+  }));
   const [damageLog, setDamageLog] = useState<DamageEntry[]>([]);
   const [damageError, setDamageError] = useState<string | null>(null);
   const [damageMessage, setDamageMessage] = useState<string | null>(null);
@@ -408,10 +384,15 @@ export default function DashboardPage() {
   const [damageFileInputKey, setDamageFileInputKey] = useState(() => Date.now());
   const [damageListLoading, setDamageListLoading] = useState(true);
   const [damageListError, setDamageListError] = useState<string | null>(null);
-  const [editingDamageId, setEditingDamageId] = useState<number | null>(null);
-  const [damageDeleteBusyId, setDamageDeleteBusyId] = useState<number | null>(null);
 
-  const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(() => createInitialExpenseFormState());
+  const [expenseForm, setExpenseForm] = useState<ExpenseFormState>(() => ({
+    plate: "",
+    category: EXPENSE_CATEGORIES[0],
+    amount: "",
+    description: "",
+    createdAt: new Date().toISOString().split("T")[0],
+    files: [],
+  }));
   const [expenseLog, setExpenseLog] = useState<ExpenseEntry[]>([]);
   const [expenseError, setExpenseError] = useState<string | null>(null);
   const [expenseMessage, setExpenseMessage] = useState<string | null>(null);
@@ -419,8 +400,6 @@ export default function DashboardPage() {
   const [expenseFileInputKey, setExpenseFileInputKey] = useState(() => Date.now());
   const [expenseListLoading, setExpenseListLoading] = useState(true);
   const [expenseListError, setExpenseListError] = useState<string | null>(null);
-  const [editingExpenseId, setEditingExpenseId] = useState<number | null>(null);
-  const [expenseDeleteBusyId, setExpenseDeleteBusyId] = useState<number | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -553,7 +532,6 @@ export default function DashboardPage() {
         latestStatus: string;
         nextDocument?: UpcomingDocument;
         documents: UpcomingDocument[];
-        responsible_person?: string | null;
       }
     >();
 
@@ -562,13 +540,9 @@ export default function DashboardPage() {
         latestStatus: doc.status,
         nextDocument: undefined,
         documents: [],
-        responsible_person: doc.responsible_person ?? null,
       };
 
       plateInfo.documents.push(doc);
-      if (!plateInfo.responsible_person && doc.responsible_person) {
-        plateInfo.responsible_person = doc.responsible_person;
-      }
       const candidate = plateInfo.nextDocument;
       if (!candidate) {
         plateInfo.nextDocument = doc;
@@ -596,7 +570,6 @@ export default function DashboardPage() {
         latestStatus: info.latestStatus,
         nextDocument: info.nextDocument,
         documents: info.documents,
-        responsible_person: info.responsible_person ?? null,
       }))
       .sort((a, b) => a.plate.localeCompare(b.plate, "tr"));
   }, [docs]);
@@ -612,10 +585,6 @@ export default function DashboardPage() {
       setVehicleFormError("Plaka alanı zorunlu.");
       return;
     }
-    if (!vehicleForm.responsible_person.trim()) {
-      setVehicleFormError("Sorumlu kişi alanı zorunlu.");
-      return;
-    }
 
     setVehicleFormBusy(true);
     try {
@@ -624,7 +593,7 @@ export default function DashboardPage() {
         make: vehicleForm.make.trim() || null,
         model: vehicleForm.model.trim() || null,
         year: vehicleForm.year.trim() ? Number(vehicleForm.year.trim()) : null,
-        responsible_person: vehicleForm.responsible_person.trim() || null,
+        responsible_email: vehicleForm.responsible_email.trim() || null,
         admin_password: adminPassword.trim(),
       };
       const res = await fetch(apiUrl("/api/vehicles"), {
@@ -638,7 +607,7 @@ export default function DashboardPage() {
         make: "",
         model: "",
         year: "",
-        responsible_person: "",
+        responsible_email: "",
       });
       flashMessage(setVehicleFormMessage, "Araç kaydedildi");
       await loadVehicles();
@@ -701,120 +670,6 @@ export default function DashboardPage() {
     }
   };
 
-  const startDamageEdit = (entry: DamageEntry) => {
-    setEditingDamageId(entry.id);
-    setDamageError(null);
-    setDamageMessage(null);
-    setDamageForm({
-      plate: entry.plate,
-      title: entry.title,
-      description: entry.description,
-      severity: DAMAGE_SEVERITIES.includes(entry.severity) ? entry.severity : "Hafif",
-      occurredAt: entry.occurredAt ? entry.occurredAt.slice(0, 10) : createInitialDamageFormState().occurredAt,
-      files: [],
-    });
-    setDamageFileInputKey(Date.now());
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  };
-
-  const cancelDamageEdit = () => {
-    setEditingDamageId(null);
-    setDamageError(null);
-    setDamageMessage(null);
-    setDamageForm(createInitialDamageFormState());
-    setDamageFileInputKey(Date.now());
-  };
-
-  const startExpenseEdit = (entry: ExpenseEntry) => {
-    setEditingExpenseId(entry.id);
-    setExpenseError(null);
-    setExpenseMessage(null);
-    setExpenseForm({
-      plate: entry.plate,
-      category: EXPENSE_CATEGORIES.includes(entry.category) ? entry.category : EXPENSE_CATEGORIES[0],
-      amount: Number.isFinite(entry.amount) ? String(entry.amount) : "",
-      description: entry.description,
-      createdAt: entry.expenseDate ? entry.expenseDate.slice(0, 10) : createInitialExpenseFormState().createdAt,
-      files: [],
-    });
-    setExpenseFileInputKey(Date.now());
-    if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
-  };
-
-  const cancelExpenseEdit = () => {
-    setEditingExpenseId(null);
-    setExpenseError(null);
-    setExpenseMessage(null);
-    setExpenseForm(createInitialExpenseFormState());
-    setExpenseFileInputKey(Date.now());
-  };
-
-  const handleDeleteDamage = async (damageId: number) => {
-    if (!adminPassword.trim()) {
-      setDamageError("Silme işlemi için yönetici şifresi gerekli.");
-      return;
-    }
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm("Bu hasar kaydını silmek istediğinize emin misiniz?");
-      if (!confirmed) return;
-    }
-    setDamageError(null);
-    setDamageMessage(null);
-    setDamageDeleteBusyId(damageId);
-    try {
-      const res = await fetch(
-        apiUrl(`/api/damages/${damageId}?admin_password=${encodeURIComponent(adminPassword.trim())}`),
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error(await extractErrorMessage(res));
-      if (editingDamageId === damageId) {
-        cancelDamageEdit();
-      }
-      await loadDamages();
-      flashMessage(setDamageMessage, "Hasar kaydı silindi");
-    } catch (err) {
-      console.error(err);
-      setDamageError((err as Error).message || "Hasar kaydı silinemedi");
-    } finally {
-      setDamageDeleteBusyId(null);
-    }
-  };
-
-  const handleDeleteExpense = async (expenseId: number) => {
-    if (!adminPassword.trim()) {
-      setExpenseError("Silme işlemi için yönetici şifresi gerekli.");
-      return;
-    }
-    if (typeof window !== "undefined") {
-      const confirmed = window.confirm("Bu masraf kaydını silmek istediğinize emin misiniz?");
-      if (!confirmed) return;
-    }
-    setExpenseError(null);
-    setExpenseMessage(null);
-    setExpenseDeleteBusyId(expenseId);
-    try {
-      const res = await fetch(
-        apiUrl(`/api/expenses/${expenseId}?admin_password=${encodeURIComponent(adminPassword.trim())}`),
-        { method: "DELETE" },
-      );
-      if (!res.ok) throw new Error(await extractErrorMessage(res));
-      if (editingExpenseId === expenseId) {
-        cancelExpenseEdit();
-      }
-      await loadExpenses();
-      flashMessage(setExpenseMessage, "Masraf kaydı silindi");
-    } catch (err) {
-      console.error(err);
-      setExpenseError((err as Error).message || "Masraf kaydı silinemedi");
-    } finally {
-      setExpenseDeleteBusyId(null);
-    }
-  };
-
   const handleDamageSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setDamageError(null);
@@ -829,65 +684,49 @@ export default function DashboardPage() {
 
     setDamageBusy(true);
     try {
-      const attachmentPayloads =
-        damageForm.files.length > 0
-          ? await Promise.all(
-              damageForm.files.map(async (file) => {
-                const dataUrl = await readFileAsDataUrl(file);
-                const [meta, base64Content] = dataUrl.split(",");
-                const mimeMatch = meta?.match(/^data:(.*?);base64$/);
-                return {
-                  file_name: file.name,
-                  mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
-                  content_base64: base64Content ?? "",
-                };
-              }),
-            )
-          : [];
-      const basePayload = {
+      const attachmentPayloads = await Promise.all(
+        damageForm.files.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file);
+          const [meta, base64Content] = dataUrl.split(",");
+          const mimeMatch = meta?.match(/^data:(.*?);base64$/);
+          return {
+            file_name: file.name,
+            mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
+            content_base64: base64Content ?? "",
+          };
+        }),
+      );
+      const payload = {
         plate: damageForm.plate.trim().toUpperCase(),
         title: damageForm.title.trim(),
         description: damageForm.description.trim() || null,
         severity: damageForm.severity,
         occurred_at: damageForm.occurredAt,
+        attachments: attachmentPayloads,
+        admin_password: adminPassword.trim(),
       };
-      if (editingDamageId) {
-        const res = await fetch(apiUrl(`/api/damages/${editingDamageId}`), {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...basePayload,
-            attachments: attachmentPayloads,
-            admin_password: adminPassword.trim(),
-          }),
-        });
-        if (!res.ok) throw new Error(await extractErrorMessage(res));
-        await res.json();
-        await loadDamages();
-        setEditingDamageId(null);
-        flashMessage(setDamageMessage, "Hasar güncellendi");
-      } else {
-        const res = await fetch(apiUrl("/api/damages"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...basePayload,
-            attachments: attachmentPayloads,
-            admin_password: adminPassword.trim(),
-          }),
-        });
+      const res = await fetch(apiUrl("/api/damages"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) throw new Error(await extractErrorMessage(res));
       await res.json();
       await loadDamages();
+      setDamageListError(null);
+      setDamageForm({
+        plate: "",
+        title: "",
+        description: "",
+        severity: damageForm.severity,
+        occurredAt: damageForm.occurredAt,
+        files: [],
+      });
+      setDamageFileInputKey(Date.now());
       flashMessage(setDamageMessage, "Hasar kaydı eklendi");
-    }
-    setDamageListError(null);
-    setDamageForm(createInitialDamageFormState());
-    setEditingDamageId(null);
-    setDamageFileInputKey(Date.now());
-  } catch (err) {
-    console.error(err);
-    setDamageError((err as Error).message || "Hasar kaydedilemedi");
+    } catch (err) {
+      console.error(err);
+      setDamageError((err as Error).message || "Hasar kaydedilemedi");
     } finally {
       setDamageBusy(false);
     }
@@ -912,66 +751,49 @@ export default function DashboardPage() {
 
     setExpenseBusy(true);
     try {
-      const attachmentsPayload =
-        expenseForm.files.length > 0
-          ? await Promise.all(
-              expenseForm.files.map(async (file) => {
-                const dataUrl = await readFileAsDataUrl(file);
-                const [meta, base64Content] = dataUrl.split(",");
-                const mimeMatch = meta?.match(/^data:(.*?);base64$/);
-                return {
-                  file_name: file.name,
-                  mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
-                  content_base64: base64Content ?? "",
-                };
-              }),
-            )
-          : [];
-      const basePayload = {
+      const attachmentsPayload = await Promise.all(
+        expenseForm.files.map(async (file) => {
+          const dataUrl = await readFileAsDataUrl(file);
+          const [meta, base64Content] = dataUrl.split(",");
+          const mimeMatch = meta?.match(/^data:(.*?);base64$/);
+          return {
+            file_name: file.name,
+            mime_type: mimeMatch?.[1] ?? file.type ?? "application/octet-stream",
+            content_base64: base64Content ?? "",
+          };
+        }),
+      );
+      const payload = {
         plate: expenseForm.plate.trim().toUpperCase(),
         category: expenseForm.category,
         amount: parsedAmount,
         description: expenseForm.description.trim() || null,
+        expense_date: expenseForm.createdAt,
+        attachments: attachmentsPayload,
+        admin_password: adminPassword.trim(),
       };
-      if (editingExpenseId) {
-        const res = await fetch(apiUrl(`/api/expenses/${editingExpenseId}`), {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...basePayload,
-            expense_date: expenseForm.createdAt,
-            attachments: attachmentsPayload,
-            admin_password: adminPassword.trim(),
-          }),
-        });
-        if (!res.ok) throw new Error(await extractErrorMessage(res));
-        await res.json();
-        await loadExpenses();
-        setEditingExpenseId(null);
-        flashMessage(setExpenseMessage, "Masraf güncellendi");
-      } else {
-        const res = await fetch(apiUrl("/api/expenses"), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...basePayload,
-            expense_date: expenseForm.createdAt,
-            attachments: attachmentsPayload,
-            admin_password: adminPassword.trim(),
-          }),
-        });
+      const res = await fetch(apiUrl("/api/expenses"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
       if (!res.ok) throw new Error(await extractErrorMessage(res));
       await res.json();
       await loadExpenses();
+      setExpenseListError(null);
+      setExpenseForm({
+        plate: "",
+        category: expenseForm.category,
+        amount: "",
+        description: "",
+        createdAt: expenseForm.createdAt,
+        files: [],
+      });
+      setExpenseFileInputKey(Date.now());
       flashMessage(setExpenseMessage, "Masraf kaydı eklendi");
-    }
-    setExpenseListError(null);
-    setExpenseForm(createInitialExpenseFormState());
-    setEditingExpenseId(null);
-    setExpenseFileInputKey(Date.now());
-  } catch (err) {
-    console.error(err);
-    setExpenseError((err as Error).message || "Masraf kaydedilemedi");
+    } catch (err) {
+      console.error(err);
+      setExpenseError((err as Error).message || "Masraf kaydedilemedi");
     } finally {
       setExpenseBusy(false);
     }
@@ -1066,10 +888,7 @@ export default function DashboardPage() {
                           {vehicle.next_status ? STATUS_LABELS[vehicle.next_status] ?? vehicle.next_status : "Belge Yok"}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-slate-300">
-                        <div>{vehicle.responsible_person ?? "Tanımlı değil"}</div>
-                        <div className="text-[10px] text-slate-500">{DEFAULT_RESPONSIBLE_EMAIL}</div>
-                      </td>
+                      <td className="px-4 py-3 text-xs text-slate-300">{vehicle.responsible_email ?? "-"}</td>
                     </tr>
                   ))
                 )}
@@ -1105,7 +924,7 @@ export default function DashboardPage() {
                           <div>
                             <span className="text-xs uppercase tracking-wide text-white/70">Sıradaki Belge</span>
                             <h3 className="text-lg font-semibold capitalize text-white">
-                              {vehicle.nextDocument.doc_label ?? docTypeLabel(vehicle.nextDocument.doc_type)}
+                              {vehicle.nextDocument.doc_type.replace(/_/g, " ")}
                             </h3>
                           </div>
                           <div className="flex items-center justify-between text-sm text-white/80">
@@ -1116,10 +935,6 @@ export default function DashboardPage() {
                             <span>Kalan Gün</span>
                             <span>{vehicle.nextDocument.days_left ?? "-"}</span>
                           </div>
-                          <div className="text-xs text-white/70">
-                            Sorumlu Kişi: {vehicle.responsible_person ?? "Tanımlı değil"}
-                          </div>
-                          <div className="text-[10px] text-white/60">E-posta: {DEFAULT_RESPONSIBLE_EMAIL}</div>
                         </>
                       ) : (
                         <p className="text-sm text-white/70">Takvimde yaklaşan belge bulunmuyor.</p>
@@ -1181,16 +996,14 @@ export default function DashboardPage() {
                 value={vehicleForm.year}
                 onChange={(event) => setVehicleForm((prev) => ({ ...prev, year: event.target.value }))}
               />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Sorumlu Kişi</label>
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Sorumlu E-posta</label>
               <input
                 className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
-                placeholder="Örn. Ayşe Yılmaz"
-                value={vehicleForm.responsible_person}
-                onChange={(event) => setVehicleForm((prev) => ({ ...prev, responsible_person: event.target.value }))}
+                placeholder="ornek@firma.com"
+                type="email"
+                value={vehicleForm.responsible_email}
+                onChange={(event) => setVehicleForm((prev) => ({ ...prev, responsible_email: event.target.value }))}
               />
-              <p className="text-[10px] text-slate-500">
-                Bildirim e-postaları otomatik olarak {DEFAULT_RESPONSIBLE_EMAIL} adresine gönderilir.
-              </p>
               <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
               <input
                 className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
@@ -1332,7 +1145,7 @@ export default function DashboardPage() {
           <header>
             <h2 className="text-2xl font-semibold text-white">Hasar Takibi</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Hasar kayıtlarını oluşturun ve görseller yükleyin. Kayıtlar veritabanında saklanır.
+              Hasar kayıtlarını oluşturun ve görseller yükleyin. Kayıtlar yalnızca bu oturumda saklanır.
             </p>
           </header>
 
@@ -1341,31 +1154,10 @@ export default function DashboardPage() {
               className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
               onSubmit={handleDamageSubmit}
             >
-              <div className="mb-1 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Hasar Kaydı Oluştur</h3>
-                  <p className="text-xs text-slate-400">
-                    Plaka, tarih ve hasar detaylarını girin{editingDamageId ? ", ardından kaydı güncelleyin" : ""}.
-                  </p>
-                </div>
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-rose-400/50 bg-rose-500/20 text-rose-100">
-                  🛠️
-                </span>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Hasar Kaydı Oluştur</h3>
+                <p className="text-xs text-slate-400">Plaka, tarih ve hasar detaylarını girin.</p>
               </div>
-              {editingDamageId ? (
-                <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>#{editingDamageId} numaralı hasar kaydını düzenliyorsunuz.</span>
-                    <button
-                      type="button"
-                      onClick={cancelDamageEdit}
-                      className="rounded border border-amber-300/50 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-100 transition hover:border-amber-200/80 hover:bg-amber-400/20"
-                    >
-                      İptal
-                    </button>
-                  </div>
-                </div>
-              ) : null}
               <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
               <input
                 className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-rose-400 focus:outline-none"
@@ -1449,7 +1241,7 @@ export default function DashboardPage() {
                 disabled={damageBusy}
                 className="inline-flex items-center justify-center rounded-lg border border-rose-400/40 bg-rose-500/20 px-4 py-2 text-sm font-medium text-rose-100 transition hover:border-rose-300/70 hover:bg-rose-500/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {damageBusy ? "Kaydediliyor..." : editingDamageId ? "Hasarı Güncelle" : "Hasar Kaydet"}
+                {damageBusy ? "Kaydediliyor..." : "Hasar Kaydet"}
               </button>
             </form>
 
@@ -1481,24 +1273,7 @@ export default function DashboardPage() {
                     >
                       <div className="flex items-center justify-between text-xs text-slate-300">
                         <span className="font-semibold text-white">{entry.plate}</span>
-                        <div className="flex items-center gap-2">
-                          <span>{new Date(entry.occurredAt).toLocaleDateString("tr-TR")}</span>
-                          <button
-                            type="button"
-                            onClick={() => startDamageEdit(entry)}
-                            className="rounded border border-slate-600/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:border-emerald-300/60 hover:bg-emerald-500/20 hover:text-emerald-100"
-                          >
-                            Düzenle
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteDamage(entry.id)}
-                            disabled={damageDeleteBusyId === entry.id}
-                            className="rounded border border-rose-400/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-rose-100 transition hover:border-rose-300/80 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:border-slate-600/60 disabled:bg-slate-800 disabled:text-slate-300"
-                          >
-                            {damageDeleteBusyId === entry.id ? "Siliniyor..." : "Sil"}
-                          </button>
-                        </div>
+                        <span>{new Date(entry.occurredAt).toLocaleDateString("tr-TR")}</span>
                       </div>
                       <div className="mt-1 flex items-start justify-between gap-3">
                         <div>
@@ -1559,31 +1334,10 @@ export default function DashboardPage() {
               className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
               onSubmit={handleExpenseSubmit}
             >
-              <div className="mb-1 flex items-center justify-between">
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Masraf Ekle</h3>
-                  <p className="text-xs text-slate-400">
-                    Plaka, kategori ve tutarı girin{editingExpenseId ? ", ardından kaydı güncelleyin" : ""}.
-                  </p>
-                </div>
-                <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-indigo-400/50 bg-indigo-500/20 text-indigo-100">
-                  ₺
-                </span>
+              <div>
+                <h3 className="text-lg font-semibold text-white">Masraf Ekle</h3>
+                <p className="text-xs text-slate-400">Plaka, kategori ve tutarı girin.</p>
               </div>
-              {editingExpenseId ? (
-                <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-                  <div className="flex items-center justify-between gap-2">
-                    <span>#{editingExpenseId} numaralı masraf kaydını düzenliyorsunuz.</span>
-                    <button
-                      type="button"
-                      onClick={cancelExpenseEdit}
-                      className="rounded border border-amber-300/50 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-amber-100 transition hover:border-amber-200/80 hover:bg-amber-400/20"
-                    >
-                      İptal
-                    </button>
-                  </div>
-                </div>
-              ) : null}
               <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
               <input
                 className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-indigo-400 focus:outline-none"
@@ -1659,7 +1413,7 @@ export default function DashboardPage() {
                 disabled={expenseBusy}
                 className="inline-flex items-center justify-center rounded-lg border border-indigo-400/40 bg-indigo-500/20 px-4 py-2 text-sm font-medium text-indigo-100 transition hover:border-indigo-300/70 hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {expenseBusy ? "Kaydediliyor..." : editingExpenseId ? "Masrafı Güncelle" : "Masraf Kaydet"}
+                {expenseBusy ? "Kaydediliyor..." : "Masraf Kaydet"}
               </button>
             </form>
 
@@ -1695,24 +1449,7 @@ export default function DashboardPage() {
                       className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 shadow-sm shadow-slate-950/20"
                     >
                       <div className="flex items-center justify-between text-xs text-slate-400">
-                        <div className="flex items-center gap-2">
-                          <span>{new Date(entry.expenseDate).toLocaleDateString("tr-TR")}</span>
-                          <button
-                            type="button"
-                            onClick={() => startExpenseEdit(entry)}
-                            className="rounded border border-slate-600/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-200 transition hover:border-emerald-300/60 hover:bg-emerald-500/20 hover:text-emerald-100"
-                          >
-                            Düzenle
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteExpense(entry.id)}
-                            disabled={expenseDeleteBusyId === entry.id}
-                            className="rounded border border-rose-400/60 px-2 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-rose-100 transition hover:border-rose-300/80 hover:bg-rose-500/20 disabled:cursor-not-allowed disabled:border-slate-600/60 disabled:bg-slate-800 disabled:text-slate-300"
-                          >
-                            {expenseDeleteBusyId === entry.id ? "Siliniyor..." : "Sil"}
-                          </button>
-                        </div>
+                        <span>{new Date(entry.createdAt).toLocaleDateString("tr-TR")}</span>
                         <span className="inline-flex items-center rounded-full border border-indigo-400/40 bg-indigo-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.25em] text-indigo-100">
                           {entry.category}
                         </span>
@@ -1909,7 +1646,7 @@ export default function DashboardPage() {
                   <div>
                     <span className="text-sm uppercase tracking-wide text-white/70">Belge Türü</span>
                     <h3 className="text-xl font-semibold capitalize text-white">
-                      {doc.doc_label ?? docTypeLabel(doc.doc_type)}
+                      {doc.doc_type.replace(/_/g, " ")}
                     </h3>
                   </div>
                   {doc.valid_from ? (
@@ -1928,9 +1665,8 @@ export default function DashboardPage() {
                   </div>
                   {doc.note ? <p className="text-xs text-white/70">Not: {doc.note}</p> : null}
                   <div className="text-xs text-white/70">
-                    Sorumlu Kişi: {doc.responsible_person ?? "Tanımlı değil"}
+                    Sorumlu: {doc.responsible_email ?? "Tanımlı değil"}
                   </div>
-                  <div className="text-xs text-white/60">E-posta: {DEFAULT_RESPONSIBLE_EMAIL}</div>
                 </div>
               </article>
             ))
