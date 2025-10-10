@@ -2161,10 +2161,19 @@ export default function DashboardPage() {
                     const assignmentLabel = formatDate(entry.assignmentDate);
                     const expectedLabel = formatDate(entry.expectedReturnDate);
                     return (
-                      <article
-                        key={entry.id}
-                        className={`rounded-xl border p-5 shadow-sm shadow-slate-950/20 transition hover:-translate-y-[2px] hover:shadow-slate-900/40 ${meta.cardClass}`}
-                      >
+                    <article
+                      key={entry.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openAssignmentDetail(entry)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          openAssignmentDetail(entry);
+                        }
+                      }}
+                      className={`rounded-xl border p-5 shadow-sm shadow-slate-950/20 transition hover:-translate-y-[2px] hover:shadow-slate-900/40 focus:outline-none focus:ring-2 focus:ring-sky-400/60 ${meta.cardClass}`}
+                    >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <p className="text-sm font-semibold text-white">{entry.personName}</p>
@@ -2239,14 +2248,20 @@ export default function DashboardPage() {
                         <div className="mt-4 flex flex-wrap justify-end gap-2">
                           <button
                             type="button"
-                            onClick={() => openAssignmentDetail(entry)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openAssignmentDetail(entry);
+                            }}
                             className="inline-flex items-center rounded-lg border border-sky-400/50 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:border-sky-300/70 hover:bg-sky-500/25"
                           >
                             Detay / Düzenle
                           </button>
                           <button
                             type="button"
-                            onClick={() => handleAssignmentDelete(entry)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleAssignmentDelete(entry);
+                            }}
                             disabled={assignmentDeletingId === entry.id}
                             className="inline-flex items-center rounded-lg border border-rose-400/50 bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-100 transition hover:border-rose-300/70 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-60"
                           >
