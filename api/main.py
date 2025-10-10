@@ -465,6 +465,37 @@ class DocumentUpdateRequest(BaseModel):
     note: str | None = None
     admin_password: str
 
+    @property
+    def normalized_doc_type(self) -> str | None:
+        if self.doc_type is None:
+            return None
+        value = self.doc_type.strip().lower().replace(" ", "_")
+        aliases = {
+            "k belgesi": "k_document",
+            "k": "k_document",
+            "trafik": "traffic_insurance",
+            "trafik_sigortası": "traffic_insurance",
+            "trafik sigortası": "traffic_insurance",
+            "sigorta": "traffic_insurance",
+            "kasko": "kasko",
+            "muayene": "inspection",
+            "inspection": "inspection",
+            "yağ": "service_oil",
+            "yag": "service_oil",
+            "yağ_bakımı": "service_oil",
+            "yag_bakimi": "service_oil",
+            "oil": "service_oil",
+            "oil_service": "service_oil",
+            "servis": "service_general",
+            "service": "service_general",
+            "bakım": "service_general",
+            "bakim": "service_general",
+            "periyodik_bakım": "service_general",
+            "periyodik bakim": "service_general",
+            "maintenance": "service_general",
+        }
+        return aliases.get(value, value)
+
 class DamageAttachmentPayload(BaseModel):
     file_name: str
     mime_type: str | None = None
