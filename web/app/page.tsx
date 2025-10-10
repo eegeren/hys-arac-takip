@@ -113,6 +113,9 @@ type AssignmentEntry = {
   plate: string;
   personName: string;
   personTitle: string | null;
+  vehicleMake: string | null;
+  vehicleModel: string | null;
+  vehicleKm: string | null;
   assignmentDate: string;
   expectedReturnDate: string | null;
   description: string;
@@ -148,6 +151,9 @@ type AssignmentFormState = {
   plate: string;
   personName: string;
   personTitle: string;
+  vehicleMake: string;
+  vehicleModel: string;
+  vehicleKm: string;
   assignmentDate: string;
   expectedReturnDate: string;
   description: string;
@@ -196,6 +202,9 @@ type AssignmentApiResponse = {
   plate: string;
   person_name: string;
   person_title: string | null;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  vehicle_km: string | null;
   assignment_date: string | null;
   expected_return_date: string | null;
   description: string | null;
@@ -265,30 +274,30 @@ const isTabId = (value: string | null): value is TabId =>
 const statusClass = (status: string) => {
   switch (status) {
     case "critical":
-      return "bg-rose-600/80 border-rose-300/60";
+      return "bg-[#401511]/85 border-[#ff7a65]/60";
     case "warning":
-      return "bg-amber-600/80 border-amber-300/60";
+      return "bg-[#3b2410]/85 border-[#ffb347]/55";
     case "ok":
-      return "bg-emerald-600/80 border-emerald-300/60";
+      return "bg-[#1f2a12]/85 border-[#7fcf6e]/55";
     case "expired":
-      return "bg-rose-900/80 border-rose-400/60";
+      return "bg-[#32130f]/85 border-[#ff8a5a]/55";
     default:
-      return "bg-slate-800/80 border-slate-600/60";
+      return "bg-[#23170f]/85 border-[#f37b1f]/35";
   }
 };
 
 const statusBadgeClass = (status: string | null | undefined) => {
   switch (status) {
     case "critical":
-      return "border-rose-400/50 bg-rose-500/20 text-rose-100";
+      return "border-[#ff7a65]/70 bg-[#401511]/70 text-[#ffd0c2]";
     case "warning":
-      return "border-amber-400/50 bg-amber-500/20 text-amber-100";
+      return "border-[#ffb347]/70 bg-[#3b2410]/70 text-[#ffe0bd]";
     case "ok":
-      return "border-emerald-400/50 bg-emerald-500/20 text-emerald-100";
+      return "border-[#7fcf6e]/70 bg-[#1f2a12]/70 text-[#d9f3ce]";
     case "expired":
-      return "border-slate-500/50 bg-slate-600/30 text-slate-100";
+      return "border-[#ff8a5a]/70 bg-[#32130f]/70 text-[#ffd3be]";
     default:
-      return "border-slate-600/60 bg-slate-700/40 text-slate-200";
+      return "border-[#f37b1f]/40 bg-[#2a1a10]/70 text-[#f4c08b]";
   }
 };
 
@@ -336,35 +345,35 @@ const assignmentReturnMeta = (expectedReturnDate: string | null) => {
   if (diff === null) {
     return {
       label: "Teslim tarihi belirtilmedi",
-      badgeClass: "border-slate-500/50 bg-slate-600/30 text-slate-100",
-      cardClass: "border-slate-700/70 bg-slate-900/70",
+      badgeClass: "border-[#f37b1f]/40 bg-[#312115] text-[#f3b375]",
+      cardClass: "border-[#f37b1f]/25 bg-[#21170f]/85",
     };
   }
   if (diff < 0) {
     return {
       label: `Gecikmiş (${Math.abs(diff)} gün)`,
-      badgeClass: "border-rose-400/60 bg-rose-500/20 text-rose-100",
-      cardClass: "border-rose-500/50 bg-rose-950/40",
+      badgeClass: "border-[#ff7a65]/70 bg-[#401511] text-[#ffcbbf]",
+      cardClass: "border-[#ff7a65]/40 bg-[#31100d]/90",
     };
   }
   if (diff === 0) {
     return {
       label: "Teslim tarihi bugün",
-      badgeClass: "border-amber-400/60 bg-amber-500/20 text-amber-100",
-      cardClass: "border-amber-400/40 bg-amber-900/40",
+      badgeClass: "border-[#ffb347]/70 bg-[#38240f] text-[#ffe1bd]",
+      cardClass: "border-[#ffb347]/40 bg-[#291c0d]/90",
     };
   }
   if (diff <= 7) {
     return {
       label: `Yaklaşıyor (${diff} gün)`,
-      badgeClass: "border-amber-400/60 bg-amber-500/20 text-amber-100",
-      cardClass: "border-amber-400/40 bg-amber-900/40",
+      badgeClass: "border-[#ffb347]/70 bg-[#38240f] text-[#ffe1bd]",
+      cardClass: "border-[#ffb347]/40 bg-[#291c0d]/90",
     };
   }
   return {
     label: `Planlı (${diff} gün)`,
-    badgeClass: "border-emerald-400/60 bg-emerald-500/20 text-emerald-100",
-    cardClass: "border-emerald-500/30 bg-emerald-950/40",
+    badgeClass: "border-[#8ac67a]/70 bg-[#223017] text-[#d9f3cf]",
+    cardClass: "border-[#8ac67a]/35 bg-[#1a2411]/85",
   };
 };
 
@@ -378,6 +387,20 @@ const isPhotoAttachment = (attachment: AssignmentAttachment) => {
   const name = attachment.name?.toLowerCase() ?? "";
   return IMAGE_FILE_REGEX.test(name);
 };
+
+const HYS_PANEL = "rounded-2xl border border-[#f37b1f]/25 bg-[#21170f]/95 shadow-lg shadow-[#130d08]/60";
+const HYS_PANEL_ALT = "rounded-xl border border-[#f37b1f]/20 bg-[#1c140f]/85";
+const HYS_INPUT =
+  "rounded-lg border border-[#f37b1f]/35 bg-[#1b130d] px-3 py-2 text-sm text-[#fbe4cc] placeholder:text-[#f3a45d]/70 focus:border-[#ff9a45] focus:outline-none focus:ring-1 focus:ring-[#ff9a45]/40";
+const HYS_FILE_INPUT =
+  "block w-full cursor-pointer rounded-lg border border-[#f37b1f]/35 bg-[#1b130d] px-3 py-2 text-sm text-[#fbe4cc] file:mr-3 file:rounded-md file:border-0 file:bg-[#f37b1f]/30 file:px-3 file:py-1 file:text-[#ffe2c3] hover:file:bg-[#f37b1f]/40 focus:border-[#ff9a45] focus:outline-none focus:ring-1 focus:ring-[#ff9a45]/40";
+const HYS_LABEL = "text-xs uppercase tracking-[0.25em] text-[#f3b375]/80";
+const HYS_BADGE_MUTED =
+  "inline-flex items-center rounded-full border border-[#f37b1f]/40 bg-[#2d1d12]/80 px-2 py-0.5 text-xs text-[#f6c18f]";
+const HYS_BUTTON_PRIMARY =
+  "inline-flex items-center justify-center rounded-lg border border-[#ff9a45]/60 bg-[#f37b1f]/25 px-4 py-2 text-sm font-medium text-[#ffe2c2] transition hover:border-[#ff9a45]/80 hover:bg-[#f37b1f]/35 disabled:cursor-not-allowed disabled:opacity-60";
+const HYS_BUTTON_SUBTLE =
+  "inline-flex items-center justify-center rounded-lg border border-[#f37b1f]/30 bg-[#23170f]/80 px-4 py-2 text-xs text-[#f3b375] transition hover:border-[#f37b1f]/50 hover:text-[#ffe0bd]";
 
 const toIsoDateInput = (value: string | null | undefined) => {
   if (!value) return "";
@@ -409,6 +432,9 @@ const createInitialAssignmentFormState = (): AssignmentFormState => ({
   plate: "",
   personName: "",
   personTitle: "",
+  vehicleMake: "",
+  vehicleModel: "",
+  vehicleKm: "",
   assignmentDate: new Date().toISOString().split("T")[0],
   expectedReturnDate: "",
   description: "",
@@ -423,6 +449,9 @@ const prepareAssignmentFormFromEntry = (entry: AssignmentEntry | null): Assignme
     plate: entry.plate,
     personName: entry.personName,
     personTitle: entry.personTitle ?? "",
+    vehicleMake: entry.vehicleMake ?? "",
+    vehicleModel: entry.vehicleModel ?? "",
+    vehicleKm: entry.vehicleKm ?? "",
     assignmentDate: toIsoDateInput(entry.assignmentDate) || new Date().toISOString().slice(0, 10),
     expectedReturnDate: toIsoDateInput(entry.expectedReturnDate),
     description: entry.description ?? "",
@@ -485,6 +514,9 @@ const adaptAssignmentResponse = (item: AssignmentApiResponse): AssignmentEntry =
   plate: item.plate,
   personName: item.person_name,
   personTitle: item.person_title ?? null,
+  vehicleMake: item.vehicle_make ?? null,
+  vehicleModel: item.vehicle_model ?? null,
+  vehicleKm: item.vehicle_km ?? null,
   assignmentDate: item.assignment_date ?? item.created_at ?? new Date().toISOString(),
   expectedReturnDate: item.expected_return_date ?? null,
   description: item.description ?? "",
@@ -565,11 +597,13 @@ export default function DashboardPage() {
     doc_type: DOCUMENT_TYPES[0]?.value ?? "inspection",
     valid_from: "",
     valid_to: "",
-    note: "",
-  });
-  const [documentFormBusy, setDocumentFormBusy] = useState(false);
-  const [documentFormError, setDocumentFormError] = useState<string | null>(null);
-  const [documentFormMessage, setDocumentFormMessage] = useState<string | null>(null);
+  note: "",
+});
+const [documentFormBusy, setDocumentFormBusy] = useState(false);
+const [documentFormError, setDocumentFormError] = useState<string | null>(null);
+const [documentFormMessage, setDocumentFormMessage] = useState<string | null>(null);
+const [documentEditingId, setDocumentEditingId] = useState<number | null>(null);
+const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; docType: string } | null>(null);
 
   const [assignmentForm, setAssignmentForm] = useState<AssignmentFormState>(() => createInitialAssignmentFormState());
   const [assignmentLog, setAssignmentLog] = useState<AssignmentEntry[]>([]);
@@ -878,6 +912,7 @@ export default function DashboardPage() {
     setError: (value: string | null) => void,
     setMessage: (value: string | null) => void,
     resetForm: () => void,
+    documentId: number | null = null,
   ) => {
     event.preventDefault();
     setError(null);
@@ -885,7 +920,8 @@ export default function DashboardPage() {
       setError("Yönetici şifresi gerekli.");
       return;
     }
-    if (!formState.vehicleId) {
+    const isUpdate = typeof documentId === "number" && !Number.isNaN(documentId);
+    if (!isUpdate && !formState.vehicleId) {
       setError("Araç seçmelisiniz.");
       return;
     }
@@ -896,27 +932,48 @@ export default function DashboardPage() {
 
     setBusy(true);
     try {
-      const payload = {
-        vehicle_id: Number(formState.vehicleId),
-        doc_type: formState.doc_type,
-        valid_from: formState.valid_from || null,
-        valid_to: formState.valid_to,
-        note: formState.note.trim() || null,
-        admin_password: adminPassword.trim(),
-      };
-      const res = await fetch(apiUrl("/api/documents"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+      let res: Response;
+      if (isUpdate) {
+        const updatePayload = {
+          doc_type: formState.doc_type,
+          valid_from: formState.valid_from || null,
+          valid_to: formState.valid_to,
+          note: formState.note.trim() || null,
+          admin_password: adminPassword.trim(),
+        };
+        res = await fetch(apiUrl(`/api/documents/${documentId}`), {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updatePayload),
+        });
+      } else {
+        const payload = {
+          vehicle_id: Number(formState.vehicleId),
+          doc_type: formState.doc_type,
+          valid_from: formState.valid_from || null,
+          valid_to: formState.valid_to,
+          note: formState.note.trim() || null,
+          admin_password: adminPassword.trim(),
+        };
+        res = await fetch(apiUrl("/api/documents"), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
       if (!res.ok) throw new Error(await extractErrorMessage(res));
-      resetForm();
-      flashMessage(setMessage, "Belge kaydedildi");
+      if (isUpdate) {
+        flashMessage(setMessage, "Belge güncellendi");
+        cancelDocumentEdit();
+      } else {
+        resetForm();
+        flashMessage(setMessage, "Belge kaydedildi");
+      }
       await loadDocs();
       await loadVehicles();
     } catch (err) {
       console.error(err);
-      setError((err as Error).message || "Belge kaydedilemedi");
+      setError((err as Error).message || (isUpdate ? "Belge güncellenemedi" : "Belge kaydedilemedi"));
     } finally {
       setBusy(false);
     }
@@ -936,6 +993,43 @@ export default function DashboardPage() {
       return { ...prev, files: nextFiles };
     });
     setAssignmentEditFilesKey(Date.now());
+  };
+
+  const cancelDocumentEdit = () => {
+    setDocumentEditingId(null);
+    setDocumentEditingInfo(null);
+    setDocumentForm({
+      vehicleId: "",
+      doc_type: DOCUMENT_TYPES[0]?.value ?? "inspection",
+      valid_from: "",
+      valid_to: "",
+      note: "",
+    });
+    setDocumentFormError(null);
+    setDocumentFormMessage(null);
+  };
+
+  const startDocumentEdit = (doc: UpcomingDocument) => {
+    const docId = doc.doc_id ?? doc.id;
+    const vehicleMatch =
+      vehicles.find((vehicle) => vehicle.documents?.some((document) => document.id === docId)) ??
+      vehicles.find((vehicle) => vehicle.plate === doc.plate);
+    const validFromValue = toIsoDateInput(doc.valid_from) || doc.valid_from || "";
+    const validToValue = toIsoDateInput(doc.valid_to) || doc.valid_to || "";
+    setDocumentForm({
+      vehicleId: vehicleMatch ? String(vehicleMatch.id) : "",
+      doc_type: doc.doc_type,
+      valid_from: validFromValue,
+      valid_to: validToValue,
+      note: doc.note ?? "",
+    });
+    setDocumentEditingId(docId);
+    setDocumentEditingInfo({
+      plate: doc.plate,
+      docType: docTypeLabel(doc.doc_type),
+    });
+    setDocumentFormError(null);
+    setDocumentFormMessage(null);
   };
 
   const handleAssignmentSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -968,6 +1062,9 @@ export default function DashboardPage() {
         plate: assignmentForm.plate.trim().toUpperCase(),
         person_name: assignmentForm.personName.trim(),
         person_title: assignmentForm.personTitle.trim() || null,
+        vehicle_make: assignmentForm.vehicleMake.trim() || null,
+        vehicle_model: assignmentForm.vehicleModel.trim() || null,
+        vehicle_km: assignmentForm.vehicleKm.trim() || null,
         assignment_date: assignmentForm.assignmentDate,
         expected_return_date: assignmentForm.expectedReturnDate ? assignmentForm.expectedReturnDate : null,
         description: assignmentForm.description.trim() || null,
@@ -987,6 +1084,9 @@ export default function DashboardPage() {
         plate: "",
         personName: "",
         personTitle: "",
+        vehicleMake: "",
+        vehicleModel: "",
+        vehicleKm: "",
         assignmentDate: assignmentForm.assignmentDate,
         expectedReturnDate: assignmentForm.expectedReturnDate,
         description: "",
@@ -1087,6 +1187,9 @@ export default function DashboardPage() {
         plate: assignmentEditForm.plate.trim().toUpperCase(),
         person_name: assignmentEditForm.personName.trim(),
         person_title: assignmentEditForm.personTitle.trim() || null,
+        vehicle_make: assignmentEditForm.vehicleMake.trim() || null,
+        vehicle_model: assignmentEditForm.vehicleModel.trim() || null,
+        vehicle_km: assignmentEditForm.vehicleKm.trim() || null,
         assignment_date: assignmentEditForm.assignmentDate || null,
         expected_return_date: assignmentEditForm.expectedReturnDate ? assignmentEditForm.expectedReturnDate : null,
         description: assignmentEditForm.description.trim() || null,
@@ -1407,53 +1510,50 @@ export default function DashboardPage() {
           </header>
 
           <div className="grid gap-6 lg:grid-cols-2">
-            <form
-              className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
-              onSubmit={handleVehicleSubmit}
-            >
+            <form className={`flex flex-col gap-3 ${HYS_PANEL} p-5`} onSubmit={handleVehicleSubmit}>
               <div>
-                <h3 className="text-lg font-semibold text-white">Araç Ekle</h3>
-                <p className="text-xs text-slate-400">Plaka, marka ve sorumlu bilgilerini girin.</p>
+                <h3 className="text-lg font-semibold text-[#fcd6ac]">Araç Ekle</h3>
+                <p className="text-xs text-[#f3b375]/80">Plaka, marka ve sorumlu bilgilerini girin.</p>
               </div>
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
+              <label className={HYS_LABEL}>Plaka</label>
               <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                className={HYS_INPUT}
                 placeholder="34 ABC 123"
                 value={vehicleForm.plate}
                 onChange={(event) => setVehicleForm((prev) => ({ ...prev, plate: event.target.value }))}
               />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Marka</label>
+              <label className={HYS_LABEL}>Marka</label>
               <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                className={HYS_INPUT}
                 placeholder="Örn. Ford"
                 value={vehicleForm.make}
                 onChange={(event) => setVehicleForm((prev) => ({ ...prev, make: event.target.value }))}
               />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Model</label>
+              <label className={HYS_LABEL}>Model</label>
               <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                className={HYS_INPUT}
                 placeholder="Örn. Transit"
                 value={vehicleForm.model}
                 onChange={(event) => setVehicleForm((prev) => ({ ...prev, model: event.target.value }))}
               />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yıl</label>
+              <label className={HYS_LABEL}>Yıl</label>
               <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                className={HYS_INPUT}
                 placeholder="2020"
                 value={vehicleForm.year}
                 onChange={(event) => setVehicleForm((prev) => ({ ...prev, year: event.target.value }))}
               />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Sorumlu E-posta</label>
+              <label className={HYS_LABEL}>Sorumlu E-posta</label>
               <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                className={HYS_INPUT}
                 placeholder="ornek@firma.com"
                 type="email"
                 value={vehicleForm.responsible_email}
                 onChange={(event) => setVehicleForm((prev) => ({ ...prev, responsible_email: event.target.value }))}
               />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+              <label className={HYS_LABEL}>Yönetici Şifresi</label>
               <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-emerald-400 focus:outline-none"
+                className={HYS_INPUT}
                 placeholder="Yönetici şifresi"
                 type="password"
                 value={adminPassword}
@@ -1469,17 +1569,13 @@ export default function DashboardPage() {
                   {vehicleFormMessage}
                 </p>
               ) : null}
-              <button
-                type="submit"
-                disabled={vehicleFormBusy}
-                className="mt-2 inline-flex items-center justify-center rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:border-emerald-300/70 hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <button type="submit" disabled={vehicleFormBusy} className={`${HYS_BUTTON_PRIMARY} mt-2`}>
                 {vehicleFormBusy ? "Kaydediliyor..." : "Araç Kaydet"}
               </button>
             </form>
 
             <form
-              className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
+              className={`flex flex-col gap-3 ${HYS_PANEL} p-5`}
               onSubmit={(event) =>
                 submitDocumentForm(
                   event,
@@ -1499,12 +1595,12 @@ export default function DashboardPage() {
               }
             >
               <div>
-                <h3 className="text-lg font-semibold text-white">Belge Ekle</h3>
-                <p className="text-xs text-slate-400">Mevcut araç için hızla belge oluşturun.</p>
+                <h3 className="text-lg font-semibold text-[#fcd6ac]">Belge Ekle</h3>
+                <p className="text-xs text-[#f3b375]/80">Mevcut araç için hızla belge oluşturun.</p>
               </div>
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Araç</label>
+              <label className={HYS_LABEL}>Araç</label>
               <select
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                className={`${HYS_INPUT} text-[#fbe4cc]`}
                 value={quickDocForm.vehicleId}
                 onChange={(event) => setQuickDocForm((prev) => ({ ...prev, vehicleId: event.target.value }))}
               >
@@ -1516,9 +1612,9 @@ export default function DashboardPage() {
                 ))}
               </select>
 
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Belge Türü</label>
+              <label className={HYS_LABEL}>Belge Türü</label>
               <select
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                className={`${HYS_INPUT} text-[#fbe4cc]`}
                 value={quickDocForm.doc_type}
                 onChange={(event) => setQuickDocForm((prev) => ({ ...prev, doc_type: event.target.value }))}
               >
@@ -1529,33 +1625,33 @@ export default function DashboardPage() {
                 ))}
               </select>
 
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Başlangıç Tarihi</label>
+              <label className={HYS_LABEL}>Başlangıç Tarihi</label>
               <input
                 type="date"
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                className={HYS_INPUT}
                 value={quickDocForm.valid_from}
                 onChange={(event) => setQuickDocForm((prev) => ({ ...prev, valid_from: event.target.value }))}
               />
 
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Bitiş Tarihi</label>
+              <label className={HYS_LABEL}>Bitiş Tarihi</label>
               <input
                 type="date"
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                className={HYS_INPUT}
                 value={quickDocForm.valid_to}
                 onChange={(event) => setQuickDocForm((prev) => ({ ...prev, valid_to: event.target.value }))}
               />
 
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Not</label>
+              <label className={HYS_LABEL}>Not</label>
               <textarea
-                className="min-h-[80px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                className={`${HYS_INPUT} min-h-[80px]`}
                 placeholder="İsteğe bağlı açıklama"
                 value={quickDocForm.note}
                 onChange={(event) => setQuickDocForm((prev) => ({ ...prev, note: event.target.value }))}
               />
 
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+              <label className={HYS_LABEL}>Yönetici Şifresi</label>
               <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                className={HYS_INPUT}
                 placeholder="Yönetici şifresi"
                 type="password"
                 value={adminPassword}
@@ -1650,6 +1746,33 @@ export default function DashboardPage() {
                     placeholder="Depo Sorumlusu"
                     value={assignmentForm.personTitle}
                     onChange={(event) => setAssignmentForm((prev) => ({ ...prev, personTitle: event.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Araç Marka</label>
+                  <input
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    placeholder="Örn. Ford"
+                    value={assignmentForm.vehicleMake}
+                    onChange={(event) => setAssignmentForm((prev) => ({ ...prev, vehicleMake: event.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Araç Model</label>
+                  <input
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    placeholder="Örn. Transit"
+                    value={assignmentForm.vehicleModel}
+                    onChange={(event) => setAssignmentForm((prev) => ({ ...prev, vehicleModel: event.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Kilometre</label>
+                  <input
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    placeholder="Örn. 125000"
+                    value={assignmentForm.vehicleKm}
+                    onChange={(event) => setAssignmentForm((prev) => ({ ...prev, vehicleKm: event.target.value }))}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -1812,6 +1935,12 @@ export default function DashboardPage() {
                             {entry.personTitle ? <p className="text-xs text-slate-300">{entry.personTitle}</p> : null}
                             <p className="mt-3 text-[10px] uppercase tracking-[0.3em] text-slate-500">Plaka</p>
                             <p className="text-sm text-white">{entry.plate}</p>
+                            {entry.vehicleMake || entry.vehicleModel || entry.vehicleKm ? (
+                              <p className="mt-2 text-xs text-slate-300">
+                                Araç: { [entry.vehicleMake, entry.vehicleModel].filter(Boolean).join(" ") || "Bilgi yok" }
+                                {entry.vehicleKm ? ` • ${entry.vehicleKm}` : ""}
+                              </p>
+                            ) : null}
                           </div>
                           <span
                             className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.25em] ${meta.badgeClass}`}
@@ -2318,19 +2447,43 @@ export default function DashboardPage() {
                   valid_to: "",
                   note: "",
                 }),
+              documentEditingId,
             )
           }
         >
-          <div className="md:col-span-2">
-            <h3 className="text-lg font-semibold text-white">Belge Ekle</h3>
-            <p className="text-xs text-slate-400">Araç seçin ve yeni belge kaydı oluşturun.</p>
+          <div className="md:col-span-2 space-y-2">
+            <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+              <div>
+                <h3 className="text-lg font-semibold text-white">
+                  {documentEditingId ? "Belge Düzenle" : "Belge Ekle"}
+                </h3>
+                <p className="text-xs text-slate-400">
+                  {documentEditingId
+                    ? "Mevcut belgeyi güncelleyebilirsiniz. Araç değiştirilemez."
+                    : "Araç seçin ve yeni belge kaydı oluşturun."}
+                </p>
+              </div>
+              {documentEditingId ? (
+                <button type="button" onClick={cancelDocumentEdit} className={HYS_BUTTON_SUBTLE}>
+                  Düzenlemeyi İptal Et
+                </button>
+              ) : null}
+            </div>
+            {documentEditingId && documentEditingInfo ? (
+              <div className="rounded-lg border border-[#f37b1f]/40 bg-[#2d1a10]/80 px-3 py-2 text-xs text-[#fbd7ad]">
+                {`${documentEditingInfo.plate} • ${documentEditingInfo.docType} belgesini düzenliyorsunuz.`}
+              </div>
+            ) : null}
           </div>
           <div className="flex flex-col gap-2">
             <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Araç</label>
             <select
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+              className={`rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none ${
+                documentEditingId ? "cursor-not-allowed opacity-60" : ""
+              }`}
               value={documentForm.vehicleId}
               onChange={(event) => setDocumentForm((prev) => ({ ...prev, vehicleId: event.target.value }))}
+              disabled={documentEditingId !== null}
             >
               <option value="">Araç seçin</option>
               {vehicles.map((vehicle) => (
@@ -2339,6 +2492,9 @@ export default function DashboardPage() {
                 </option>
               ))}
             </select>
+            {documentEditingId ? (
+              <span className="text-[11px] text-slate-500">Belge düzenlerken araç değiştirilemez.</span>
+            ) : null}
           </div>
           <div className="flex flex-col gap-2">
             <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Belge Türü</label>
@@ -2402,12 +2558,14 @@ export default function DashboardPage() {
                 {documentFormMessage}
               </p>
             ) : null}
-            <button
-              type="submit"
-              disabled={documentFormBusy}
-              className="inline-flex items-center justify-center rounded-lg border border-sky-400/40 bg-sky-500/20 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-300/70 hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {documentFormBusy ? "Kaydediliyor..." : "Belge Kaydet"}
+            <button type="submit" disabled={documentFormBusy} className={HYS_BUTTON_PRIMARY}>
+              {documentFormBusy
+                ? documentEditingId
+                  ? "Belge güncelleniyor..."
+                  : "Belge kaydediliyor..."
+                : documentEditingId
+                ? "Belge Güncelle"
+                : "Belge Kaydet"}
             </button>
           </div>
         </form>
@@ -2460,6 +2618,15 @@ export default function DashboardPage() {
                   <div className="text-xs text-white/70">
                     Sorumlu: {doc.responsible_email ?? "Tanımlı değil"}
                   </div>
+                </div>
+                <div className="flex justify-end gap-2 px-5 pb-4">
+                  <button
+                    type="button"
+                    onClick={() => startDocumentEdit(doc)}
+                    className={`${HYS_BUTTON_SUBTLE} px-3 py-1.5 text-xs`}
+                  >
+                    Düzenle
+                  </button>
                 </div>
               </article>
             ))
@@ -2523,8 +2690,8 @@ export default function DashboardPage() {
 
   return (
     <>
-      <section className="space-y-8">
-        <nav className="flex flex-wrap gap-2 rounded-full border border-slate-800 bg-slate-900/70 p-1 text-sm">
+      <section className="space-y-8 text-[#fde7cf]">
+        <nav className="flex flex-wrap gap-2 rounded-full border border-[#f37b1f]/35 bg-[#1b120a]/90 p-1 text-sm shadow-md shadow-[#120b06]/40">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
@@ -2534,8 +2701,8 @@ export default function DashboardPage() {
                 onClick={() => setTab(tab.id)}
                 className={`rounded-full px-4 py-2 transition ${
                   isActive
-                    ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/40"
-                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                    ? "bg-[#f37b1f] text-[#23140c] shadow-lg shadow-[#f37b1f]/40"
+                    : "text-[#f3b375] hover:bg-[#2b1a10] hover:text-[#ffe2c3]"
                 }`}
               >
                 {tab.label}
@@ -2633,16 +2800,46 @@ export default function DashboardPage() {
                         }
                       />
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Görev / Departman</label>
-                      <input
-                        className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                        value={assignmentEditForm.personTitle}
-                        onChange={(event) =>
-                          setAssignmentEditForm((prev) => ({ ...prev, personTitle: event.target.value }))
-                        }
-                      />
-                    </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Görev / Departman</label>
+                    <input
+                      className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                      value={assignmentEditForm.personTitle}
+                      onChange={(event) =>
+                        setAssignmentEditForm((prev) => ({ ...prev, personTitle: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Araç Marka</label>
+                    <input
+                      className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                      value={assignmentEditForm.vehicleMake}
+                      onChange={(event) =>
+                        setAssignmentEditForm((prev) => ({ ...prev, vehicleMake: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Araç Model</label>
+                    <input
+                      className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                      value={assignmentEditForm.vehicleModel}
+                      onChange={(event) =>
+                        setAssignmentEditForm((prev) => ({ ...prev, vehicleModel: event.target.value }))
+                      }
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Kilometre</label>
+                    <input
+                      className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                      value={assignmentEditForm.vehicleKm}
+                      onChange={(event) =>
+                        setAssignmentEditForm((prev) => ({ ...prev, vehicleKm: event.target.value }))
+                      }
+                    />
+                  </div>
                     <div className="flex flex-col gap-2">
                       <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Beklenen Teslim</label>
                       <input
@@ -2757,7 +2954,7 @@ export default function DashboardPage() {
                 </form>
               ) : (
                 <div className="space-y-6">
-                  <div className="grid gap-4 md:grid-cols-2">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                     <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
                       <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Teslim Bilgisi</p>
                       <ul className="mt-3 space-y-2 text-sm text-slate-200">
@@ -2788,6 +2985,27 @@ export default function DashboardPage() {
                         </li>
                       </ul>
                     </div>
+                    {(selectedAssignment.vehicleMake ||
+                      selectedAssignment.vehicleModel ||
+                      selectedAssignment.vehicleKm) && (
+                      <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
+                        <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Araç Bilgisi</p>
+                        <ul className="mt-3 space-y-2 text-sm text-slate-200">
+                          <li>
+                            <span className="text-slate-400">Marka: </span>
+                            {selectedAssignment.vehicleMake ?? "-"}
+                          </li>
+                          <li>
+                            <span className="text-slate-400">Model: </span>
+                            {selectedAssignment.vehicleModel ?? "-"}
+                          </li>
+                          <li>
+                            <span className="text-slate-400">Kilometre: </span>
+                            {selectedAssignment.vehicleKm ?? "-"}
+                          </li>
+                        </ul>
+                      </div>
+                    )}
                   </div>
 
                   {selectedAssignment.description ? (
