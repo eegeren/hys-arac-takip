@@ -120,6 +120,12 @@ type AssignmentEntry = {
   attachments: AssignmentAttachment[];
 };
 
+type AssignmentPreview = {
+  name: string;
+  preview: string;
+  mimeType: string | null;
+};
+
 type DamageFormState = {
   plate: string;
   title: string;
@@ -570,6 +576,7 @@ export default function DashboardPage() {
   const [assignmentEditError, setAssignmentEditError] = useState<string | null>(null);
   const [assignmentDetailMessage, setAssignmentDetailMessage] = useState<string | null>(null);
   const [assignmentEditBusy, setAssignmentEditBusy] = useState(false);
+  const [assignmentPreview, setAssignmentPreview] = useState<AssignmentPreview | null>(null);
 
   const [damageForm, setDamageForm] = useState<DamageFormState>(() => ({
     plate: "",
@@ -746,6 +753,17 @@ export default function DashboardPage() {
   useEffect(() => {
     loadExpenses();
   }, [loadExpenses]);
+
+  useEffect(() => {
+    if (!assignmentPreview) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAssignmentPreview(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [assignmentPreview]);
 
   const groupedByPlate = useMemo(() => {
     const byPlate = new Map<
@@ -1595,7 +1613,26 @@ export default function DashboardPage() {
                             {selectedAssignment.attachments.map((attachment) => (
                               <figure
                                 key={attachment.id}
-                                className="group relative overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80"
+                                role="button"
+                                tabIndex={0}
+                                onClick={() =>
+                                  setAssignmentPreview({
+                                    name: attachment.name,
+                                    preview: attachment.preview,
+                                    mimeType: attachment.mimeType ?? null,
+                                  })
+                                }
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    setAssignmentPreview({
+                                      name: attachment.name,
+                                      preview: attachment.preview,
+                                      mimeType: attachment.mimeType ?? null,
+                                    });
+                                  }
+                                }}
+                                className="group relative cursor-zoom-in overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 outline-none transition hover:border-sky-500/60 focus:border-sky-500/60"
                               >
                                 {attachment.preview.startsWith("data:application/pdf") ? (
                                   <div className="flex h-48 w-full items-center justify-center bg-slate-800 text-sm text-slate-200">
@@ -1614,14 +1651,9 @@ export default function DashboardPage() {
                                     <span className="text-[10px] text-slate-500">{formatFileSize(attachment.size)}</span>
                                   ) : null}
                                 </figcaption>
-                                <a
-                                  href={attachment.preview}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="absolute right-3 top-3 rounded-full border border-slate-500/60 bg-slate-900/80 px-3 py-1 text-[10px] text-slate-100 opacity-0 transition group-hover:opacity-100"
-                                >
-                                  Aç
-                                </a>
+                                <span className="absolute right-3 top-3 rounded-full border border-slate-500/60 bg-slate-900/80 px-3 py-1 text-[10px] text-slate-100 opacity-0 transition group-hover:opacity-100">
+                                  Görüntüle
+                                </span>
                               </figure>
                             ))}
                           </div>
@@ -1632,6 +1664,64 @@ export default function DashboardPage() {
                         )}
                       </div>
                     </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {assignmentPreview ? (
+            <div
+              className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/90 px-4 py-8"
+              onClick={() => setAssignmentPreview(null)}
+            >
+              <div
+                className="relative w-full max-w-4xl rounded-2xl border border-slate-800 bg-slate-900/95 p-6 shadow-2xl shadow-slate-950/70"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Dosya Önizleme</p>
+                    <h3 className="text-lg font-semibold text-white">{assignmentPreview.name}</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={assignmentPreview.preview}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-lg border border-sky-400/60 bg-sky-500/15 px-3 py-1.5 text-xs text-sky-100 transition hover:border-sky-300/80 hover:bg-sky-500/25"
+                    >
+                      Yeni Sekmede Aç
+                    </a>
+                    <a
+                      href={assignmentPreview.preview}
+                      download={assignmentPreview.name}
+                      className="rounded-lg border border-emerald-400/60 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-100 transition hover:border-emerald-300/80 hover:bg-emerald-500/25"
+                    >
+                      İndir
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setAssignmentPreview(null)}
+                      className="rounded-full border border-slate-600/60 bg-slate-900/80 px-3 py-1 text-xs text-slate-200 transition hover:border-rose-400/60 hover:text-rose-200"
+                    >
+                      Kapat
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-4">
+                  {assignmentPreview.mimeType?.includes("pdf") ? (
+                    <iframe
+                      title={assignmentPreview.name}
+                      src={assignmentPreview.preview}
+                      className="h-[70vh] w-full rounded-xl border border-slate-800 bg-white"
+                    />
+                  ) : (
+                    <img
+                      src={assignmentPreview.preview}
+                      alt={assignmentPreview.name}
+                      className="max-h-[75vh] w-full rounded-xl border border-slate-800 bg-slate-950 object-contain"
+                    />
                   )}
                 </div>
               </div>
