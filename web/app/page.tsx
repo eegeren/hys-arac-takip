@@ -577,6 +577,7 @@ export default function DashboardPage() {
   const [assignmentDetailMessage, setAssignmentDetailMessage] = useState<string | null>(null);
   const [assignmentEditBusy, setAssignmentEditBusy] = useState(false);
   const [assignmentPreview, setAssignmentPreview] = useState<AssignmentPreview | null>(null);
+  const [assignmentDeletingId, setAssignmentDeletingId] = useState<number | null>(null);
 
   const [damageForm, setDamageForm] = useState<DamageFormState>(() => ({
     plate: "",
@@ -990,6 +991,37 @@ export default function DashboardPage() {
     }
   };
 
+  const handleAssignmentDelete = async (entry: AssignmentEntry) => {
+    if (!adminPassword.trim()) {
+      setAssignmentListError("Silmek için yönetici şifresi gerekli.");
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const ok = window.confirm(`${entry.plate} kaydını silmek istediğinize emin misiniz?`);
+      if (!ok) return;
+    }
+    setAssignmentDeletingId(entry.id);
+    try {
+      const params = new URLSearchParams({
+        admin_password: adminPassword.trim(),
+      });
+      const res = await fetch(apiUrl(`/api/assignments/${entry.id}?${params.toString()}`), {
+        method: "DELETE",
+      });
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      setAssignmentLog((prev) => prev.filter((item) => item.id !== entry.id));
+      setAssignmentListError(null);
+      if (selectedAssignment?.id === entry.id) {
+        closeAssignmentDetail();
+      }
+    } catch (err) {
+      console.error(err);
+      setAssignmentListError((err as Error).message || "Zimmet silinemedi");
+    } finally {
+      setAssignmentDeletingId(null);
+    }
+  };
+
   const openAssignmentDetail = (entry: AssignmentEntry) => {
     const prepared = prepareAssignmentFormFromEntry(entry);
     setSelectedAssignment(entry);
@@ -1009,6 +1041,7 @@ export default function DashboardPage() {
     setAssignmentDetailMessage(null);
     setAssignmentEditForm(createInitialAssignmentFormState());
     setAssignmentEditFilesKey(Date.now());
+    setAssignmentPreview(null);
   };
 
   const handleAssignmentEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -2203,6 +2236,23 @@ export default function DashboardPage() {
                             })}
                           </div>
                         ) : null}
+                        <div className="mt-4 flex flex-wrap justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => openAssignmentDetail(entry)}
+                            className="inline-flex items-center rounded-lg border border-sky-400/50 bg-sky-500/15 px-3 py-1.5 text-xs font-medium text-sky-100 transition hover:border-sky-300/70 hover:bg-sky-500/25"
+                          >
+                            Detay / Düzenle
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAssignmentDelete(entry)}
+                            disabled={assignmentDeletingId === entry.id}
+                            className="inline-flex items-center rounded-lg border border-rose-400/50 bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-100 transition hover:border-rose-300/70 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {assignmentDeletingId === entry.id ? "Siliniyor..." : "Sil"}
+                          </button>
+                        </div>
                       </article>
                     );
                   })}
