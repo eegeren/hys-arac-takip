@@ -1529,7 +1529,13 @@ def create_expense(body: ExpenseCreateRequest):
             )
         return _fetch_expense(con, row["id"])
 
-def notify_job(vehicle_id: int | None = None):
+def notify_job(
+    vehicle_id: int | None = None,
+    *,
+    force: bool = False,
+    return_details: bool = False,
+    dry_run: bool = False,
+):
     today = today_local()
     with engine.begin() as con:
         sql = """
@@ -1541,18 +1547,46 @@ def notify_job(vehicle_id: int | None = None):
             where d.valid_to >= :today
               and (:vid is null or v.id = :vid)
           )
-          select * from due where days_left = any(:thresholds)
-          and not exists (
-            select 1 from notifications_log nl
-            where nl.document_id = due.doc_id and nl.threshold_days = due.days_left
-          )
+          select due.*, nl.id as notification_id
+          from due
+          left join notifications_log nl
+            on nl.document_id = due.doc_id
+           and nl.threshold_days = due.days_left
+          where due.days_left = any(:thresholds)
           order by valid_to
         """
         rows = con.execute(text(sql), {"today": today, "thresholds": THRESHOLDS, "vid": vehicle_id}).mappings().all()
 
+        details = {"sent": [], "skipped": [], "errors": []}
+
         for r in rows:
-            if not r["responsible_email"]:
+            recipient = (r["responsible_email"] or MAIL_TO or "").strip()
+            detail = {
+                "plate": r["plate"],
+                "doc_type": r["doc_type"],
+                "doc_label": tr_doc_label(r["doc_type"]),
+                "valid_to": str(r["valid_to"]),
+                "days_left": r["days_left"],
+                "recipient": recipient or None,
+                "already_sent": bool(r["notification_id"]),
+            }
+
+            if not recipient:
+                detail["status"] = "skipped"
+                detail["reason"] = "no_recipient"
+                details["skipped"].append(detail)
                 continue
+            if r["notification_id"] and not force:
+                detail["status"] = "skipped"
+                detail["reason"] = "already_sent"
+                details["skipped"].append(detail)
+                continue
+
+            if dry_run:
+                detail["status"] = "would_send"
+                details["sent"].append(detail)
+                continue
+
             try:
                 html = render_email(
                     plate=r["plate"],
@@ -1562,7 +1596,7 @@ def notify_job(vehicle_id: int | None = None):
                     panel_url=f"{PANEL_URL}/vehicles?plate={r['plate']}",
                 )
                 send_mail(
-                    r["responsible_email"],
+                    recipient,
                     f"Araç Belge Uyarısı: {r['plate']} - {tr_doc_label(r['doc_type'])} ({r['days_left']}g)",
                     html,
                 )
@@ -1579,9 +1613,17 @@ def notify_job(vehicle_id: int | None = None):
                         "sent_at": datetime.now(timezone.utc),
                     },
                 )
+                detail["status"] = "sent"
+                details["sent"].append(detail)
             except Exception as e:
                 print(f"notify_job mail error for {r['plate']} - {r['doc_type']}: {e}")
+                detail["status"] = "error"
+                detail["reason"] = str(e)
+                details["errors"].append(detail)
                 continue
+        if return_details or dry_run:
+            return details
+        return None
 
 def debug_send_test(to: str = Query(..., description="Alıcı e-posta")):
     try:
@@ -1603,14 +1645,28 @@ def documents_upcoming(days: int = Query(60, ge=1, le=365)):
 def debug_run_notifications(
     admin_password: str = Query(..., description="Bildirim çalıştırma şifresi"),
     vehicle_id: int | None = Query(None, description="Sadece bu araç için tetikle (opsiyonel)"),
+    force: bool = Query(False, description="Önceden gönderilmiş olsa da tekrar gönder"),
 ):
     if admin_password != VEHICLE_ADMIN_PASSWORD:
         raise HTTPException(status_code=403, detail="Şifre hatalı")
     try:
-        notify_job(vehicle_id)
-        return {"ok": True, "ran": True}
+        result = notify_job(vehicle_id, force=force, return_details=True)
+        return {"ok": True, "ran": True, "force": force, "result": result}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+def debug_dry_run_notifications(
+    admin_password: str = Query(..., description="Bildirim raporu şifresi"),
+    vehicle_id: int | None = Query(None, description="Sadece bu araç için raporla (opsiyonel)"),
+    force: bool = Query(False, description="Daha önce gönderilenleri de listeler"),
+):
+    if admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    try:
+        result = notify_job(vehicle_id, force=force, return_details=True, dry_run=True)
+        return {"ok": True, "dry_run": True, "force": force, "result": result}
+    except Exception as e:
+        return {"ok": False, "dry_run": True, "error": str(e)}
 
 if _scheduler_enabled():
     scheduler = BackgroundScheduler(timezone=os.getenv("TZ", "Europe/Istanbul"))
@@ -1897,8 +1953,17 @@ def delete_expense_api(expense_id: int, admin_password: str = Query(..., descrip
 def debug_run_notifications_api(
     admin_password: str = Query(..., description="Bildirim çalıştırma şifresi"),
     vehicle_id: int | None = Query(None, description="Sadece bu araç için tetikle (opsiyonel)"),
+    force: bool = Query(False, description="Önceden gönderilmiş olsa da tekrar gönder"),
 ):
-    return debug_run_notifications(admin_password, vehicle_id)
+    return debug_run_notifications(admin_password, vehicle_id, force)
+
+@app.get("/api/debug/dry_run_notifications")
+def debug_dry_run_notifications_api(
+    admin_password: str = Query(..., description="Bildirim raporu şifresi"),
+    vehicle_id: int | None = Query(None, description="Sadece bu araç için raporla (opsiyonel)"),
+    force: bool = Query(False, description="Daha önce gönderilenleri de listeler"),
+):
+    return debug_dry_run_notifications(admin_password, vehicle_id, force)
 
 @app.get("/api/debug/send_test")
 def debug_send_test_api(to: str = Query(..., description="Alıcı e-posta")):
