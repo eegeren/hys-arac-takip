@@ -169,8 +169,27 @@ const DOCUMENT_TYPES = [
   { value: "traffic_insurance", label: "Trafik Sigortası" },
   { value: "kasko", label: "Kasko" },
   { value: "service_oil", label: "Yağ Bakımı" },
-  { value: "service_general", label: "Genel Bakım" },
+  { value: "service_general", label: "Periyodik Bakım" },
 ];
+
+const DOC_TYPE_LABELS: Record<string, string> = {
+  inspection: "Muayene",
+  k_document: "K Belgesi",
+  traffic_insurance: "Trafik Sigortası",
+  kasko: "Kasko",
+  service_oil: "Yağ Bakımı",
+  service_general: "Periyodik Bakım",
+};
+
+const docTypeLabel = (code: string | null | undefined) => {
+  if (!code) return "";
+  const normalized = code.toLowerCase();
+  return (
+    DOC_TYPE_LABELS[normalized] ??
+    DOC_TYPE_LABELS[normalized.replace(/-/g, "_")] ??
+    normalized.replace(/_/g, " ")
+  );
+};
 
 const DAMAGE_SEVERITIES: DamageSeverity[] = ["Hafif", "Orta", "Ağır"];
 
@@ -924,7 +943,7 @@ export default function DashboardPage() {
                           <div>
                             <span className="text-xs uppercase tracking-wide text-white/70">Sıradaki Belge</span>
                             <h3 className="text-lg font-semibold capitalize text-white">
-                              {vehicle.nextDocument.doc_type.replace(/_/g, " ")}
+                              {docTypeLabel(vehicle.nextDocument.doc_type)}
                             </h3>
                           </div>
                           <div className="flex items-center justify-between text-sm text-white/80">
@@ -1643,12 +1662,12 @@ export default function DashboardPage() {
                     <span className="text-sm uppercase tracking-wide text-white/70">Plaka</span>
                     <span className="text-lg font-semibold text-white">{doc.plate}</span>
                   </div>
-                  <div>
-                    <span className="text-sm uppercase tracking-wide text-white/70">Belge Türü</span>
-                    <h3 className="text-xl font-semibold capitalize text-white">
-                      {doc.doc_type.replace(/_/g, " ")}
-                    </h3>
-                  </div>
+                    <div>
+                      <span className="text-sm uppercase tracking-wide text-white/70">Belge Türü</span>
+                      <h3 className="text-xl font-semibold capitalize text-white">
+                        {docTypeLabel(doc.doc_type)}
+                      </h3>
+                    </div>
                   {doc.valid_from ? (
                     <div className="flex items-center justify-between text-xs text-white/70">
                       <span>Geçerlilik Başlangıcı</span>
