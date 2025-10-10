@@ -368,6 +368,17 @@ const assignmentReturnMeta = (expectedReturnDate: string | null) => {
   };
 };
 
+const IMAGE_FILE_REGEX = /\.(png|jpe?g|gif|webp|bmp|svg)$/i;
+
+const isPhotoAttachment = (attachment: AssignmentAttachment) => {
+  const mime = attachment.mimeType?.toLowerCase() ?? "";
+  if (mime.startsWith("image/")) {
+    return true;
+  }
+  const name = attachment.name?.toLowerCase() ?? "";
+  return IMAGE_FILE_REGEX.test(name);
+};
+
 const toIsoDateInput = (value: string | null | undefined) => {
   if (!value) return "";
   if (value.length >= 10) return value.slice(0, 10);
@@ -2459,6 +2470,56 @@ export default function DashboardPage() {
   };
 
   const tabContent = renderTabContent();
+  const selectedPhotoAttachments = selectedAssignment?.attachments?.filter(isPhotoAttachment) ?? [];
+  const selectedDocumentAttachments =
+    selectedAssignment?.attachments?.filter((attachment) => !isPhotoAttachment(attachment)) ?? [];
+
+  const renderSelectedAttachmentCard = (attachment: AssignmentAttachment) => (
+    <figure
+      key={attachment.id}
+      role="button"
+      tabIndex={0}
+      onClick={() =>
+        setAssignmentPreview({
+          name: attachment.name,
+          preview: attachment.preview,
+          mimeType: attachment.mimeType ?? null,
+        })
+      }
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          setAssignmentPreview({
+            name: attachment.name,
+            preview: attachment.preview,
+            mimeType: attachment.mimeType ?? null,
+          });
+        }
+      }}
+      className="group relative cursor-zoom-in overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 outline-none transition hover:border-sky-500/60 focus:border-sky-500/60"
+    >
+      {attachment.preview.startsWith("data:application/pdf") ? (
+        <div className="flex h-48 w-full items-center justify-center bg-slate-800 text-sm text-slate-200">
+          PDF Önizleme
+        </div>
+      ) : (
+        <img
+          src={attachment.preview}
+          alt={attachment.name}
+          className="h-48 w-full object-cover transition group-hover:scale-[1.01]"
+        />
+      )}
+      <figcaption className="flex items-center justify-between gap-3 px-3 py-2 text-xs text-slate-300">
+        <span className="truncate">{attachment.name}</span>
+        {attachment.size ? (
+          <span className="text-[10px] text-slate-500">{formatFileSize(attachment.size)}</span>
+        ) : null}
+      </figcaption>
+      <span className="absolute right-3 top-3 rounded-full border border-slate-500/60 bg-slate-900/80 px-3 py-1 text-[10px] text-slate-100 opacity-0 transition group-hover:opacity-100">
+        Görüntüle
+      </span>
+    </figure>
+  );
 
   return (
     <>
@@ -2736,65 +2797,47 @@ export default function DashboardPage() {
                     </div>
                   ) : null}
 
-                  <div className="space-y-3">
+                  <div className="space-y-5">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-semibold text-white">Belge ve Fotoğraflar</h4>
+                      <h4 className="text-sm font-semibold text-white">Ekler</h4>
                       <span className="text-xs text-slate-400">{selectedAssignment.attachments.length} adet ek</span>
                     </div>
-                    {selectedAssignment.attachments.length > 0 ? (
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        {selectedAssignment.attachments.map((attachment) => (
-                          <figure
-                            key={attachment.id}
-                            role="button"
-                            tabIndex={0}
-                            onClick={() =>
-                              setAssignmentPreview({
-                                name: attachment.name,
-                                preview: attachment.preview,
-                                mimeType: attachment.mimeType ?? null,
-                              })
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                setAssignmentPreview({
-                                  name: attachment.name,
-                                  preview: attachment.preview,
-                                  mimeType: attachment.mimeType ?? null,
-                                });
-                              }
-                            }}
-                            className="group relative cursor-zoom-in overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 outline-none transition hover:border-sky-500/60 focus:border-sky-500/60"
-                          >
-                            {attachment.preview.startsWith("data:application/pdf") ? (
-                              <div className="flex h-48 w-full items-center justify-center bg-slate-800 text-sm text-slate-200">
-                                PDF Önizleme
-                              </div>
-                            ) : (
-                              <img
-                                src={attachment.preview}
-                                alt={attachment.name}
-                                className="h-48 w-full object-cover transition group-hover:scale-[1.01]"
-                              />
-                            )}
-                            <figcaption className="flex items-center justify-between gap-3 px-3 py-2 text-xs text-slate-300">
-                              <span className="truncate">{attachment.name}</span>
-                              {attachment.size ? (
-                                <span className="text-[10px] text-slate-500">{formatFileSize(attachment.size)}</span>
-                              ) : null}
-                            </figcaption>
-                            <span className="absolute right-3 top-3 rounded-full border border-slate-500/60 bg-slate-900/80 px-3 py-1 text-[10px] text-slate-100 opacity-0 transition group-hover:opacity-100">
-                              Görüntüle
-                            </span>
-                          </figure>
-                        ))}
+
+                    {selectedPhotoAttachments.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs uppercase tracking-[0.3em] text-slate-500">
+                            Fotoğraflar
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            {selectedPhotoAttachments.length} adet fotoğraf
+                          </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          {selectedPhotoAttachments.map((attachment) => renderSelectedAttachmentCard(attachment))}
+                        </div>
                       </div>
-                    ) : (
+                    ) : null}
+
+                    {selectedDocumentAttachments.length > 0 ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs uppercase tracking-[0.3em] text-slate-500">Evraklar</span>
+                          <span className="text-[11px] text-slate-400">
+                            {selectedDocumentAttachments.length} adet evrak
+                          </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          {selectedDocumentAttachments.map((attachment) => renderSelectedAttachmentCard(attachment))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    {selectedPhotoAttachments.length === 0 && selectedDocumentAttachments.length === 0 ? (
                       <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
-                        Bu kayda ait görsel eklenmemiş.
+                        Bu kayda ait görsel veya evrak eklenmemiş.
                       </p>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               )}
