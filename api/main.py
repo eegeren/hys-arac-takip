@@ -92,6 +92,9 @@ def _ensure_tables():
       plate TEXT NOT NULL,
       person_name TEXT NOT NULL,
       person_title TEXT,
+      vehicle_make TEXT,
+      vehicle_model TEXT,
+      vehicle_km TEXT,
       assignment_date DATE NOT NULL,
       expected_return_date DATE,
       description TEXT,
@@ -127,6 +130,9 @@ def _ensure_tables():
     CREATE INDEX IF NOT EXISTS idx_assignments_plate ON assignments(plate);
     CREATE INDEX IF NOT EXISTS idx_expenses_plate ON expenses(plate);
     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS responsible_person TEXT;
+    ALTER TABLE assignments ADD COLUMN IF NOT EXISTS vehicle_make TEXT;
+    ALTER TABLE assignments ADD COLUMN IF NOT EXISTS vehicle_model TEXT;
+    ALTER TABLE assignments ADD COLUMN IF NOT EXISTS vehicle_km TEXT;
     """
     with engine.begin() as con:
         for statement in ddl.strip().split(";"):
@@ -514,6 +520,9 @@ class AssignmentCreateRequest(BaseModel):
     plate: str
     person_name: str
     person_title: str | None = None
+    vehicle_make: str | None = None
+    vehicle_model: str | None = None
+    vehicle_km: str | None = None
     assignment_date: date
     expected_return_date: date | None = None
     description: str | None = None
@@ -524,6 +533,9 @@ class AssignmentUpdateRequest(BaseModel):
     plate: str | None = None
     person_name: str | None = None
     person_title: str | None = None
+    vehicle_make: str | None = None
+    vehicle_model: str | None = None
+    vehicle_km: str | None = None
     assignment_date: date | None = None
     expected_return_date: date | None = None
     description: str | None = None
@@ -1133,6 +1145,9 @@ def _serialize_assignment_row(row: Mapping[str, object], attachments: list[Mappi
         "plate": row["plate"],
         "person_name": row["person_name"],
         "person_title": row.get("person_title"),
+        "vehicle_make": row.get("vehicle_make"),
+        "vehicle_model": row.get("vehicle_model"),
+        "vehicle_km": row.get("vehicle_km"),
         "assignment_date": row["assignment_date"].isoformat() if row.get("assignment_date") else None,
         "expected_return_date": row["expected_return_date"].isoformat() if row.get("expected_return_date") else None,
         "description": row.get("description"),
@@ -1481,6 +1496,9 @@ def list_assignments():
                        a.plate,
                        a.person_name,
                        a.person_title,
+                       a.vehicle_make,
+                       a.vehicle_model,
+                       a.vehicle_km,
                        a.assignment_date,
                        a.expected_return_date,
                        a.description,
@@ -1525,6 +1543,9 @@ def _fetch_assignment(con, assignment_id: int):
                    a.plate,
                    a.person_name,
                    a.person_title,
+                   a.vehicle_make,
+                   a.vehicle_model,
+                   a.vehicle_km,
                    a.assignment_date,
                    a.expected_return_date,
                    a.description,
@@ -1590,6 +1611,9 @@ def create_assignment(body: AssignmentCreateRequest):
                     plate,
                     person_name,
                     person_title,
+                    vehicle_make,
+                    vehicle_model,
+                    vehicle_km,
                     assignment_date,
                     expected_return_date,
                     description
@@ -1599,6 +1623,9 @@ def create_assignment(body: AssignmentCreateRequest):
                     :plate,
                     :person_name,
                     :person_title,
+                    :vehicle_make,
+                    :vehicle_model,
+                    :vehicle_km,
                     :assignment_date,
                     :expected_return_date,
                     :description
@@ -1611,6 +1638,9 @@ def create_assignment(body: AssignmentCreateRequest):
                 "plate": plate,
                 "person_name": person_name,
                 "person_title": body.person_title.strip() if body.person_title else None,
+                "vehicle_make": body.vehicle_make.strip() if body.vehicle_make else None,
+                "vehicle_model": body.vehicle_model.strip() if body.vehicle_model else None,
+                "vehicle_km": body.vehicle_km.strip() if body.vehicle_km else None,
                 "assignment_date": body.assignment_date,
                 "expected_return_date": body.expected_return_date,
                 "description": body.description.strip() if body.description else None,
@@ -1686,6 +1716,15 @@ def update_assignment(assignment_id: int, body: AssignmentUpdateRequest):
         if body.person_title is not None:
             title = body.person_title.strip()
             update_fields["person_title"] = title if title else None
+        if body.vehicle_make is not None:
+            make = body.vehicle_make.strip()
+            update_fields["vehicle_make"] = make if make else None
+        if body.vehicle_model is not None:
+            mdl = body.vehicle_model.strip()
+            update_fields["vehicle_model"] = mdl if mdl else None
+        if body.vehicle_km is not None:
+            km = body.vehicle_km.strip()
+            update_fields["vehicle_km"] = km if km else None
         if body.assignment_date is not None:
             update_fields["assignment_date"] = body.assignment_date
         if body.expected_return_date is not None:
