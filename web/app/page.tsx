@@ -345,35 +345,35 @@ const assignmentReturnMeta = (expectedReturnDate: string | null) => {
   if (diff === null) {
     return {
       label: "Teslim tarihi belirtilmedi",
-      badgeClass: "border-[#f37b1f]/40 bg-[#312115] text-[#f3b375]",
-      cardClass: "border-[#f37b1f]/25 bg-[#21170f]/85",
+      badgeClass: "border-[#3B82F6]/60 bg-[#10213d] text-[#e0f2ff]",
+      cardClass: "border-[#1E3A8A]/35 bg-[#0b1324]/85",
     };
   }
   if (diff < 0) {
     return {
       label: `Gecikmiş (${Math.abs(diff)} gün)`,
-      badgeClass: "border-[#ff7a65]/70 bg-[#401511] text-[#ffcbbf]",
-      cardClass: "border-[#ff7a65]/40 bg-[#31100d]/90",
+      badgeClass: "border-[#f87171]/70 bg-[#3b0f12] text-[#fee2e2]",
+      cardClass: "border-[#fca5a5]/45 bg-[#2b1014]/85",
     };
   }
   if (diff === 0) {
     return {
       label: "Teslim tarihi bugün",
-      badgeClass: "border-[#ffb347]/70 bg-[#38240f] text-[#ffe1bd]",
-      cardClass: "border-[#ffb347]/40 bg-[#291c0d]/90",
+      badgeClass: "border-[#fbbf24]/70 bg-[#3b2a0f] text-[#fef3c7]",
+      cardClass: "border-[#facc15]/45 bg-[#2b200d]/85",
     };
   }
   if (diff <= 7) {
     return {
       label: `Yaklaşıyor (${diff} gün)`,
-      badgeClass: "border-[#ffb347]/70 bg-[#38240f] text-[#ffe1bd]",
-      cardClass: "border-[#ffb347]/40 bg-[#291c0d]/90",
+      badgeClass: "border-[#3B82F6]/70 bg-[#13213a] text-[#dbeafe]",
+      cardClass: "border-[#2563EB]/45 bg-[#101b33]/85",
     };
   }
   return {
     label: `Planlı (${diff} gün)`,
-    badgeClass: "border-[#8ac67a]/70 bg-[#223017] text-[#d9f3cf]",
-    cardClass: "border-[#8ac67a]/35 bg-[#1a2411]/85",
+    badgeClass: "border-[#34d399]/60 bg-[#0f2a21] text-[#d1fae5]",
+    cardClass: "border-[#34d399]/35 bg-[#0a1f17]/85",
   };
 };
 
@@ -388,19 +388,19 @@ const isPhotoAttachment = (attachment: AssignmentAttachment) => {
   return IMAGE_FILE_REGEX.test(name);
 };
 
-const HYS_PANEL = "rounded-2xl border border-[#f37b1f]/25 bg-[#21170f]/95 shadow-lg shadow-[#130d08]/60";
-const HYS_PANEL_ALT = "rounded-xl border border-[#f37b1f]/20 bg-[#1c140f]/85";
+const HYS_PANEL = "rounded-2xl border border-[#1E40AF]/35 bg-[#0F172A]/95 shadow-lg shadow-[#020617]/60";
+const HYS_PANEL_ALT = "rounded-xl border border-[#1E40AF]/25 bg-[#111C33]/85";
 const HYS_INPUT =
-  "rounded-lg border border-[#f37b1f]/35 bg-[#1b130d] px-3 py-2 text-sm text-[#fbe4cc] placeholder:text-[#f3a45d]/70 focus:border-[#ff9a45] focus:outline-none focus:ring-1 focus:ring-[#ff9a45]/40";
+  "rounded-lg border border-[#1E3A8A]/40 bg-[#0B1220] px-3 py-2 text-sm text-[#e2e8f0] placeholder:text-[#94a3b8]/70 focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]/40";
 const HYS_FILE_INPUT =
-  "block w-full cursor-pointer rounded-lg border border-[#f37b1f]/35 bg-[#1b130d] px-3 py-2 text-sm text-[#fbe4cc] file:mr-3 file:rounded-md file:border-0 file:bg-[#f37b1f]/30 file:px-3 file:py-1 file:text-[#ffe2c3] hover:file:bg-[#f37b1f]/40 focus:border-[#ff9a45] focus:outline-none focus:ring-1 focus:ring-[#ff9a45]/40";
-const HYS_LABEL = "text-xs uppercase tracking-[0.25em] text-[#f3b375]/80";
+  "block w-full cursor-pointer rounded-lg border border-[#1E3A8A]/40 bg-[#0B1220] px-3 py-2 text-sm text-[#e2e8f0] file:mr-3 file:rounded-md file:border-0 file:bg-[#2563EB]/30 file:px-3 file:py-1 file:text-[#dbeafe] hover:file:bg-[#2563EB]/40 focus:border-[#3B82F6] focus:outline-none focus:ring-1 focus:ring-[#3B82F6]/40";
+const HYS_LABEL = "text-xs uppercase tracking-[0.25em] text-[#93c5fd]/80";
 const HYS_BADGE_MUTED =
-  "inline-flex items-center rounded-full border border-[#f37b1f]/40 bg-[#2d1d12]/80 px-2 py-0.5 text-xs text-[#f6c18f]";
+  "inline-flex items-center rounded-full border border-[#1E3A8A]/45 bg-[#0f1a2d]/80 px-2 py-0.5 text-xs text-[#cbd5f5]";
 const HYS_BUTTON_PRIMARY =
-  "inline-flex items-center justify-center rounded-lg border border-[#ff9a45]/60 bg-[#f37b1f]/25 px-4 py-2 text-sm font-medium text-[#ffe2c2] transition hover:border-[#ff9a45]/80 hover:bg-[#f37b1f]/35 disabled:cursor-not-allowed disabled:opacity-60";
+  "inline-flex items-center justify-center rounded-lg border border-[#3B82F6]/70 bg-[#1E3A8A]/45 px-4 py-2 text-sm font-medium text-[#dbeafe] transition hover:border-[#60A5FA]/80 hover:bg-[#1d4ed8]/60 disabled:cursor-not-allowed disabled:opacity-60";
 const HYS_BUTTON_SUBTLE =
-  "inline-flex items-center justify-center rounded-lg border border-[#f37b1f]/30 bg-[#23170f]/80 px-4 py-2 text-xs text-[#f3b375] transition hover:border-[#f37b1f]/50 hover:text-[#ffe0bd]";
+  "inline-flex items-center justify-center rounded-lg border border-[#1E3A8A]/35 bg-[#101c34]/80 px-4 py-2 text-xs text-[#cbd5f5] transition hover:border-[#2563EB]/60 hover:text-white";
 
 const toIsoDateInput = (value: string | null | undefined) => {
   if (!value) return "";
@@ -1702,21 +1702,21 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
                   <h3 className="text-lg font-semibold text-white">Zimmet Kaydı Oluştur</h3>
                   <p className="text-xs text-slate-400">Araç teslimini tüm detaylarıyla kaydedin.</p>
                 </div>
-                <div className="rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-100">
+                <div className="rounded-lg border border-[#2563EB]/35 bg-[#11223c] px-3 py-2 text-[11px] text-[#dbeafe]">
                   <p>Fotoğraf veya PDF ekleyerek teslim tutanağını sisteme kaydedin. Plaka ve personel adı zorunludur.</p>
                 </div>
               </div>
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">
+                  <label className={HYS_LABEL}>
                     Plaka
-                    <span className="ml-2 rounded-full border border-slate-500/40 px-2 py-0.5 text-[10px] text-slate-200">
+                    <span className={`${HYS_BADGE_MUTED} ml-2 px-2 py-0.5 text-[10px] font-semibold`}>
                       Zorunlu
                     </span>
                   </label>
                   <input
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    className={HYS_INPUT}
                     placeholder="34 ABC 123"
                     value={assignmentForm.plate}
                     onChange={(event) => setAssignmentForm((prev) => ({ ...prev, plate: event.target.value }))}
@@ -1726,60 +1726,60 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">
+                  <label className={HYS_LABEL}>
                     Personel Adı
-                    <span className="ml-2 rounded-full border border-slate-500/40 px-2 py-0.5 text-[10px] text-slate-200">
+                    <span className={`${HYS_BADGE_MUTED} ml-2 px-2 py-0.5 text-[10px] font-semibold`}>
                       Zorunlu
                     </span>
                   </label>
                   <input
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    className={HYS_INPUT}
                     placeholder="Ad Soyad"
                     value={assignmentForm.personName}
                     onChange={(event) => setAssignmentForm((prev) => ({ ...prev, personName: event.target.value }))}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Görev / Departman</label>
+                  <label className={HYS_LABEL}>Görev / Departman</label>
                   <input
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    className={HYS_INPUT}
                     placeholder="Depo Sorumlusu"
                     value={assignmentForm.personTitle}
                     onChange={(event) => setAssignmentForm((prev) => ({ ...prev, personTitle: event.target.value }))}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Araç Marka</label>
+                  <label className={HYS_LABEL}>Araç Marka</label>
                   <input
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    className={HYS_INPUT}
                     placeholder="Örn. Ford"
                     value={assignmentForm.vehicleMake}
                     onChange={(event) => setAssignmentForm((prev) => ({ ...prev, vehicleMake: event.target.value }))}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Araç Model</label>
+                  <label className={HYS_LABEL}>Araç Model</label>
                   <input
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    className={HYS_INPUT}
                     placeholder="Örn. Transit"
                     value={assignmentForm.vehicleModel}
                     onChange={(event) => setAssignmentForm((prev) => ({ ...prev, vehicleModel: event.target.value }))}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Kilometre</label>
+                  <label className={HYS_LABEL}>Kilometre</label>
                   <input
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    className={HYS_INPUT}
                     placeholder="Örn. 125000"
                     value={assignmentForm.vehicleKm}
                     onChange={(event) => setAssignmentForm((prev) => ({ ...prev, vehicleKm: event.target.value }))}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Beklenen Teslim</label>
+                  <label className={HYS_LABEL}>Beklenen Teslim</label>
                   <input
                     type="date"
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    className={HYS_INPUT}
                     value={assignmentForm.expectedReturnDate}
                     onChange={(event) =>
                       setAssignmentForm((prev) => ({ ...prev, expectedReturnDate: event.target.value }))
@@ -1790,10 +1790,10 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
 
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Zimmet Tarihi</label>
+                  <label className={HYS_LABEL}>Zimmet Tarihi</label>
                   <input
                     type="date"
-                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    className={HYS_INPUT}
                     value={assignmentForm.assignmentDate}
                     onChange={(event) =>
                       setAssignmentForm((prev) => ({ ...prev, assignmentDate: event.target.value }))
@@ -1801,9 +1801,9 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Açıklama</label>
+                  <label className={HYS_LABEL}>Açıklama</label>
                   <textarea
-                    className="min-h-[90px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    className={`${HYS_INPUT} min-h-[90px]`}
                     placeholder="Teslim şartları, araç üzerinde bulunan ekipmanlar vb."
                     value={assignmentForm.description}
                     onChange={(event) => setAssignmentForm((prev) => ({ ...prev, description: event.target.value }))}
@@ -1812,13 +1812,13 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Fotoğraf / Belge</label>
+                <label className={HYS_LABEL}>Fotoğraf / Belge</label>
                 <input
                   key={assignmentFileInputKey}
                   type="file"
                   accept="image/*,application/pdf"
                   multiple
-                  className="block w-full cursor-pointer rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-sky-500/20 file:px-3 file:py-1 file:text-sky-100 hover:file:bg-sky-500/30"
+                  className={HYS_FILE_INPUT}
                   onChange={(event: ChangeEvent<HTMLInputElement>) => {
                     const files = event.target.files ? Array.from(event.target.files) : [];
                     setAssignmentForm((prev) => ({ ...prev, files }));
@@ -1848,9 +1848,9 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+                <label className={HYS_LABEL}>Yönetici Şifresi</label>
                 <input
-                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                  className={HYS_INPUT}
                   placeholder="Yönetici şifresi"
                   type="password"
                   value={adminPassword}
@@ -1871,7 +1871,7 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
               <div className="flex items-center justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-4 py-2 text-xs text-slate-200 transition hover:border-slate-500/60 hover:text-white"
+                  className={HYS_BUTTON_SUBTLE}
                   onClick={() => {
                     setAssignmentForm(createInitialAssignmentFormState());
                     setAssignmentFileInputKey(Date.now());
@@ -1882,7 +1882,7 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
                 <button
                   type="submit"
                   disabled={assignmentBusy}
-                  className="inline-flex items-center justify-center rounded-lg border border-sky-400/40 bg-sky-500/20 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-300/70 hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                  className={HYS_BUTTON_PRIMARY}
                 >
                   {assignmentBusy ? "Kaydediliyor..." : "Zimmet Kaydet"}
                 </button>
@@ -2470,17 +2470,15 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
               ) : null}
             </div>
             {documentEditingId && documentEditingInfo ? (
-              <div className="rounded-lg border border-[#f37b1f]/40 bg-[#2d1a10]/80 px-3 py-2 text-xs text-[#fbd7ad]">
+              <div className="rounded-lg border border-[#1E3A8A]/40 bg-[#0f1a2d]/80 px-3 py-2 text-xs text-[#cbd5f5]">
                 {`${documentEditingInfo.plate} • ${documentEditingInfo.docType} belgesini düzenliyorsunuz.`}
               </div>
             ) : null}
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Araç</label>
+            <label className={HYS_LABEL}>Araç</label>
             <select
-              className={`rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none ${
-                documentEditingId ? "cursor-not-allowed opacity-60" : ""
-              }`}
+              className={`${HYS_INPUT} ${documentEditingId ? "cursor-not-allowed opacity-60" : ""}`}
               value={documentForm.vehicleId}
               onChange={(event) => setDocumentForm((prev) => ({ ...prev, vehicleId: event.target.value }))}
               disabled={documentEditingId !== null}
@@ -2497,9 +2495,9 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
             ) : null}
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Belge Türü</label>
+            <label className={HYS_LABEL}>Belge Türü</label>
             <select
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+              className={`${HYS_INPUT} text-[#e2e8f0]`}
               value={documentForm.doc_type}
               onChange={(event) => setDocumentForm((prev) => ({ ...prev, doc_type: event.target.value }))}
             >
@@ -2511,36 +2509,36 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
             </select>
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Başlangıç Tarihi</label>
+            <label className={HYS_LABEL}>Başlangıç Tarihi</label>
             <input
               type="date"
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+              className={HYS_INPUT}
               value={documentForm.valid_from}
               onChange={(event) => setDocumentForm((prev) => ({ ...prev, valid_from: event.target.value }))}
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Bitiş Tarihi</label>
+            <label className={HYS_LABEL}>Bitiş Tarihi</label>
             <input
               type="date"
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+              className={HYS_INPUT}
               value={documentForm.valid_to}
               onChange={(event) => setDocumentForm((prev) => ({ ...prev, valid_to: event.target.value }))}
             />
           </div>
           <div className="flex flex-col gap-2 md:col-span-2">
-            <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Not</label>
+            <label className={HYS_LABEL}>Not</label>
             <textarea
-              className="min-h-[80px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+              className={`${HYS_INPUT} min-h-[80px]`}
               placeholder="İsteğe bağlı açıklama"
               value={documentForm.note}
               onChange={(event) => setDocumentForm((prev) => ({ ...prev, note: event.target.value }))}
             />
           </div>
           <div className="flex flex-col gap-2">
-            <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+            <label className={HYS_LABEL}>Yönetici Şifresi</label>
             <input
-              className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+              className={HYS_INPUT}
               placeholder="Yönetici şifresi"
               type="password"
               value={adminPassword}
