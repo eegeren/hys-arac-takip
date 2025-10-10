@@ -296,6 +296,72 @@ const formatDaysLabel = (days?: number | null) => {
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("tr-TR", { style: "currency", currency: "TRY", maximumFractionDigits: 0 }).format(value);
 
+const formatDate = (value?: string | null) => {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString("tr-TR");
+};
+
+const formatFileSize = (value?: number | null) => {
+  if (value === null || value === undefined) return "";
+  if (value >= 1024 * 1024) {
+    return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+  }
+  if (value >= 1024) {
+    return `${Math.round(value / 1024)} KB`;
+  }
+  return `${value} B`;
+};
+
+const calculateDaysUntil = (value?: string | null) => {
+  if (!value) return null;
+  const target = new Date(value);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  const diffMs = target.getTime() - today.getTime();
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
+};
+
+const assignmentReturnMeta = (expectedReturnDate: string | null) => {
+  const diff = calculateDaysUntil(expectedReturnDate);
+  if (diff === null) {
+    return {
+      label: "Teslim tarihi belirtilmedi",
+      badgeClass: "border-slate-500/50 bg-slate-600/30 text-slate-100",
+      cardClass: "border-slate-700/70 bg-slate-900/70",
+    };
+  }
+  if (diff < 0) {
+    return {
+      label: `Gecikmiş (${Math.abs(diff)} gün)`,
+      badgeClass: "border-rose-400/60 bg-rose-500/20 text-rose-100",
+      cardClass: "border-rose-500/50 bg-rose-950/40",
+    };
+  }
+  if (diff === 0) {
+    return {
+      label: "Teslim tarihi bugün",
+      badgeClass: "border-amber-400/60 bg-amber-500/20 text-amber-100",
+      cardClass: "border-amber-400/40 bg-amber-900/40",
+    };
+  }
+  if (diff <= 7) {
+    return {
+      label: `Yaklaşıyor (${diff} gün)`,
+      badgeClass: "border-amber-400/60 bg-amber-500/20 text-amber-100",
+      cardClass: "border-amber-400/40 bg-amber-900/40",
+    };
+  }
+  return {
+    label: `Planlı (${diff} gün)`,
+    badgeClass: "border-emerald-400/60 bg-emerald-500/20 text-emerald-100",
+    cardClass: "border-emerald-500/30 bg-emerald-950/40",
+  };
+};
+
 const createInitialDamageFormState = (): DamageFormState => ({
   plate: "",
   title: "",
@@ -793,6 +859,14 @@ export default function DashboardPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleAssignmentFileRemove = (index: number) => {
+    setAssignmentForm((prev) => {
+      const nextFiles = prev.files.filter((_, i) => i !== index);
+      return { ...prev, files: nextFiles };
+    });
+    setAssignmentFileInputKey(Date.now());
   };
 
   const handleAssignmentSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -1340,44 +1414,58 @@ export default function DashboardPage() {
 
           <div className="grid gap-6 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
             <form
-              className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
+              className="flex flex-col gap-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
               onSubmit={handleAssignmentSubmit}
             >
-              <div>
-                <h3 className="text-lg font-semibold text-white">Zimmet Kaydı Oluştur</h3>
-                <p className="text-xs text-slate-400">Plaka ve personel bilgilerini girin.</p>
+              <div className="space-y-2">
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Zimmet Kaydı Oluştur</h3>
+                  <p className="text-xs text-slate-400">Araç teslimini tüm detaylarıyla kaydedin.</p>
+                </div>
+                <div className="rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-[11px] text-sky-100">
+                  <p>Fotoğraf veya PDF ekleyerek teslim tutanağını sisteme kaydedin. Plaka ve personel adı zorunludur.</p>
+                </div>
               </div>
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
-              <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                placeholder="34 ABC 123"
-                value={assignmentForm.plate}
-                onChange={(event) => setAssignmentForm((prev) => ({ ...prev, plate: event.target.value }))}
-              />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Personel Adı</label>
-              <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                placeholder="Ad Soyad"
-                value={assignmentForm.personName}
-                onChange={(event) => setAssignmentForm((prev) => ({ ...prev, personName: event.target.value }))}
-              />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Görev / Departman</label>
-              <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                placeholder="Depo Sorumlusu"
-                value={assignmentForm.personTitle}
-                onChange={(event) => setAssignmentForm((prev) => ({ ...prev, personTitle: event.target.value }))}
-              />
-              <div className="grid gap-3 md:grid-cols-2">
+
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Zimmet Tarihi</label>
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">
+                    Plaka
+                    <span className="ml-2 rounded-full border border-slate-500/40 px-2 py-0.5 text-[10px] text-slate-200">
+                      Zorunlu
+                    </span>
+                  </label>
                   <input
-                    type="date"
                     className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                    value={assignmentForm.assignmentDate}
-                    onChange={(event) =>
-                      setAssignmentForm((prev) => ({ ...prev, assignmentDate: event.target.value }))
+                    placeholder="34 ABC 123"
+                    value={assignmentForm.plate}
+                    onChange={(event) => setAssignmentForm((prev) => ({ ...prev, plate: event.target.value }))}
+                    onBlur={(event) =>
+                      setAssignmentForm((prev) => ({ ...prev, plate: event.target.value.trim().toUpperCase() }))
                     }
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">
+                    Personel Adı
+                    <span className="ml-2 rounded-full border border-slate-500/40 px-2 py-0.5 text-[10px] text-slate-200">
+                      Zorunlu
+                    </span>
+                  </label>
+                  <input
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    placeholder="Ad Soyad"
+                    value={assignmentForm.personName}
+                    onChange={(event) => setAssignmentForm((prev) => ({ ...prev, personName: event.target.value }))}
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Görev / Departman</label>
+                  <input
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    placeholder="Depo Sorumlusu"
+                    value={assignmentForm.personTitle}
+                    onChange={(event) => setAssignmentForm((prev) => ({ ...prev, personTitle: event.target.value }))}
                   />
                 </div>
                 <div className="flex flex-col gap-2">
@@ -1392,50 +1480,106 @@ export default function DashboardPage() {
                   />
                 </div>
               </div>
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Açıklama</label>
-              <textarea
-                className="min-h-[90px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                placeholder="Teslim şartları, ekipmanlar vb."
-                value={assignmentForm.description}
-                onChange={(event) => setAssignmentForm((prev) => ({ ...prev, description: event.target.value }))}
-              />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Fotoğraf / Görsel</label>
-              <input
-                key={assignmentFileInputKey}
-                type="file"
-                accept="image/*,application/pdf"
-                multiple
-                className="block w-full cursor-pointer rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-sky-500/20 file:px-3 file:py-1 file:text-sky-100 hover:file:bg-sky-500/30"
-                onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                  const files = event.target.files ? Array.from(event.target.files) : [];
-                  setAssignmentForm((prev) => ({ ...prev, files }));
-                }}
-              />
-              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
-              <input
-                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                placeholder="Yönetici şifresi"
-                type="password"
-                value={adminPassword}
-                onChange={(event) => setAdminPassword(event.target.value)}
-              />
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Zimmet Tarihi</label>
+                  <input
+                    type="date"
+                    className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    value={assignmentForm.assignmentDate}
+                    onChange={(event) =>
+                      setAssignmentForm((prev) => ({ ...prev, assignmentDate: event.target.value }))
+                    }
+                  />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Açıklama</label>
+                  <textarea
+                    className="min-h-[90px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                    placeholder="Teslim şartları, araç üzerinde bulunan ekipmanlar vb."
+                    value={assignmentForm.description}
+                    onChange={(event) => setAssignmentForm((prev) => ({ ...prev, description: event.target.value }))}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Fotoğraf / Belge</label>
+                <input
+                  key={assignmentFileInputKey}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  multiple
+                  className="block w-full cursor-pointer rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-sky-500/20 file:px-3 file:py-1 file:text-sky-100 hover:file:bg-sky-500/30"
+                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                    const files = event.target.files ? Array.from(event.target.files) : [];
+                    setAssignmentForm((prev) => ({ ...prev, files }));
+                  }}
+                />
+                {assignmentForm.files.length > 0 ? (
+                  <div className="flex flex-wrap gap-2 rounded-lg border border-slate-700/60 bg-slate-900/60 p-3">
+                    {assignmentForm.files.map((file, index) => (
+                      <span
+                        key={`${file.name}-${index}`}
+                        className="inline-flex items-center gap-2 rounded-md border border-slate-600 bg-slate-800/80 px-3 py-1 text-xs text-slate-100"
+                      >
+                        <span className="max-w-[160px] truncate">{file.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleAssignmentFileRemove(index)}
+                          className="rounded-full border border-slate-500/60 px-2 text-[10px] text-slate-200 transition hover:border-rose-400/60 hover:text-rose-200"
+                        >
+                          Sil
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-slate-500">En fazla 5 MB boyutunda görsel veya PDF seçebilirsiniz.</p>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2">
+                <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+                <input
+                  className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                  placeholder="Yönetici şifresi"
+                  type="password"
+                  value={adminPassword}
+                  onChange={(event) => setAdminPassword(event.target.value)}
+                />
+              </div>
+
               {assignmentError ? (
-                <p className="mt-2 rounded-lg border border-sky-400/30 bg-sky-500/10 px-3 py-2 text-xs text-sky-100">
+                <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
                   {assignmentError}
                 </p>
               ) : null}
               {assignmentMessage ? (
-                <p className="mt-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                <p className="rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
                   {assignmentMessage}
                 </p>
               ) : null}
-              <button
-                type="submit"
-                disabled={assignmentBusy}
-                className="inline-flex items-center justify-center rounded-lg border border-sky-400/40 bg-sky-500/20 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-300/70 hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {assignmentBusy ? "Kaydediliyor..." : "Zimmet Kaydet"}
-              </button>
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-4 py-2 text-xs text-slate-200 transition hover:border-slate-500/60 hover:text-white"
+                  onClick={() => {
+                    setAssignmentForm(createInitialAssignmentFormState());
+                    setAssignmentFileInputKey(Date.now());
+                  }}
+                >
+                  Formu Temizle
+                </button>
+                <button
+                  type="submit"
+                  disabled={assignmentBusy}
+                  className="inline-flex items-center justify-center rounded-lg border border-sky-400/40 bg-sky-500/20 px-4 py-2 text-sm font-medium text-sky-100 transition hover:border-sky-300/70 hover:bg-sky-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {assignmentBusy ? "Kaydediliyor..." : "Zimmet Kaydet"}
+                </button>
+              </div>
             </form>
 
             <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-5">
@@ -1459,61 +1603,90 @@ export default function DashboardPage() {
                 </p>
               ) : (
                 <div className="space-y-3">
-                  {assignmentLog.map((entry) => (
-                    <article
-                      key={entry.id}
-                      className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 shadow-sm shadow-slate-950/20"
-                    >
-                      <div className="flex items-center justify-between text-xs text-slate-300">
-                        <span className="font-semibold text-white">{entry.plate}</span>
-                        <span>
-                          {entry.assignmentDate
-                            ? new Date(entry.assignmentDate).toLocaleDateString("tr-TR")
-                            : "-"}
-                        </span>
-                      </div>
-                      <div className="mt-2">
-                        <p className="text-sm font-medium text-white">{entry.personName}</p>
-                        {entry.personTitle ? (
-                          <p className="text-xs text-slate-300">{entry.personTitle}</p>
-                        ) : null}
-                      </div>
-                      {entry.expectedReturnDate ? (
-                        <p className="mt-1 text-[11px] uppercase tracking-[0.2em] text-slate-400">
-                          Beklenen Teslim:{" "}
-                          {new Date(entry.expectedReturnDate).toLocaleDateString("tr-TR")}
-                        </p>
-                      ) : null}
-                      {entry.description ? (
-                        <p className="mt-2 text-xs text-slate-300">{entry.description}</p>
-                      ) : null}
-                      {entry.attachments.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-3">
-                          {entry.attachments.map((attachment) => (
-                            <figure
-                              key={attachment.id}
-                              className="flex flex-col overflow-hidden rounded-lg border border-slate-800 bg-slate-900/80"
-                            >
-                              {attachment.preview.startsWith("data:application/pdf") ? (
-                                <div className="flex h-24 w-32 items-center justify-center bg-slate-800 text-xs text-slate-200">
-                                  PDF
-                                </div>
-                              ) : (
-                                <img
-                                  src={attachment.preview}
-                                  alt={attachment.name}
-                                  className="h-24 w-32 object-cover"
-                                />
-                              )}
-                              <figcaption className="truncate px-2 py-1 text-[11px] text-slate-300">
-                                {attachment.name}
-                              </figcaption>
-                            </figure>
-                          ))}
+                  {assignmentLog.map((entry) => {
+                    const meta = assignmentReturnMeta(entry.expectedReturnDate);
+                    const createdLabel = formatDate(entry.createdAt);
+                    const assignmentLabel = formatDate(entry.assignmentDate);
+                    const expectedLabel = formatDate(entry.expectedReturnDate);
+                    return (
+                      <article
+                        key={entry.id}
+                        className={`rounded-xl border p-5 shadow-sm shadow-slate-950/20 transition hover:-translate-y-[2px] hover:shadow-slate-900/40 ${meta.cardClass}`}
+                      >
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <p className="text-sm font-semibold text-white">{entry.personName}</p>
+                            {entry.personTitle ? <p className="text-xs text-slate-300">{entry.personTitle}</p> : null}
+                            <p className="mt-3 text-[10px] uppercase tracking-[0.3em] text-slate-500">Plaka</p>
+                            <p className="text-sm text-white">{entry.plate}</p>
+                          </div>
+                          <span
+                            className={`inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.25em] ${meta.badgeClass}`}
+                          >
+                            {meta.label}
+                          </span>
                         </div>
-                      ) : null}
-                    </article>
-                  ))}
+
+                        <div className="mt-4 grid gap-3 text-[11px] text-slate-400 sm:grid-cols-3">
+                          <div>
+                            <span className="block uppercase tracking-[0.3em] text-slate-500">Zimmet Tarihi</span>
+                            <span className="mt-1 block text-sm text-white">{assignmentLabel}</span>
+                          </div>
+                          <div>
+                            <span className="block uppercase tracking-[0.3em] text-slate-500">Beklenen Teslim</span>
+                            <span className="mt-1 block text-sm text-white">{expectedLabel}</span>
+                          </div>
+                          <div>
+                            <span className="block uppercase tracking-[0.3em] text-slate-500">Kaydedildi</span>
+                            <span className="mt-1 block text-sm text-white">{createdLabel}</span>
+                          </div>
+                        </div>
+
+                        {entry.description ? (
+                          <p className="mt-3 rounded-lg border border-slate-700/60 bg-slate-900/70 p-3 text-sm text-slate-200">
+                            {entry.description}
+                          </p>
+                        ) : null}
+
+                        {entry.attachments.length > 0 ? (
+                          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                            {entry.attachments.map((attachment) => {
+                              const sizeLabel = formatFileSize(attachment.size);
+                              return (
+                                <figure
+                                  key={attachment.id}
+                                  className="group relative flex flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900/80"
+                                >
+                                  {attachment.preview.startsWith("data:application/pdf") ? (
+                                    <div className="flex h-28 w-full items-center justify-center bg-slate-800 text-xs text-slate-200">
+                                      PDF ÖN İZLEME
+                                    </div>
+                                  ) : (
+                                    <img
+                                      src={attachment.preview}
+                                      alt={attachment.name}
+                                      className="h-28 w-full object-cover"
+                                    />
+                                  )}
+                                  <figcaption className="flex items-center justify-between gap-3 px-3 py-2 text-[11px] text-slate-300">
+                                    <span className="truncate">{attachment.name}</span>
+                                    {sizeLabel ? <span className="text-[10px] text-slate-500">{sizeLabel}</span> : null}
+                                  </figcaption>
+                                  <a
+                                    href={attachment.preview}
+                                    download={attachment.name}
+                                    className="absolute right-2 top-2 rounded-full border border-slate-500/60 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200 opacity-0 transition group-hover:opacity-100"
+                                  >
+                                    İndir
+                                  </a>
+                                </figure>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </article>
+                    );
+                  })}
                 </div>
               )}
             </div>
