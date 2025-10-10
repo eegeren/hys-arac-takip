@@ -2294,15 +2294,6 @@ export default function DashboardPage() {
                           ))}
                         </div>
                       ) : null}
-                      <div className="mt-4 flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => openAssignmentDetail(entry)}
-                          className="inline-flex items-center rounded-lg border border-slate-600/60 bg-slate-800/70 px-3 py-1.5 text-xs font-medium text-slate-100 transition hover:border-sky-400/60 hover:text-sky-100"
-                        >
-                          Detay / Düzenle
-                        </button>
-                      </div>
                     </article>
                   ))}
                 </div>
