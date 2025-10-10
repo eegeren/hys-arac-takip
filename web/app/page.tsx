@@ -1023,6 +1023,7 @@ export default function DashboardPage() {
   };
 
   const openAssignmentDetail = (entry: AssignmentEntry) => {
+    setAssignmentPreview(null);
     const prepared = prepareAssignmentFormFromEntry(entry);
     setSelectedAssignment(entry);
     setAssignmentEditMode(false);
@@ -2172,7 +2173,7 @@ export default function DashboardPage() {
                           openAssignmentDetail(entry);
                         }
                       }}
-                      className={`rounded-xl border p-5 shadow-sm shadow-slate-950/20 transition hover:-translate-y-[2px] hover:shadow-slate-900/40 focus:outline-none focus:ring-2 focus:ring-sky-400/60 ${meta.cardClass}`}
+                      className={`cursor-pointer rounded-xl border p-5 shadow-sm shadow-slate-950/20 transition hover:-translate-y-[2px] hover:shadow-slate-900/40 focus:outline-none focus:ring-2 focus:ring-sky-400/60 ${meta.cardClass}`}
                     >
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div>
@@ -2216,6 +2217,26 @@ export default function DashboardPage() {
                               return (
                                 <figure
                                   key={attachment.id}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setAssignmentPreview({
+                                      name: attachment.name,
+                                      preview: attachment.preview,
+                                      mimeType: attachment.mimeType ?? null,
+                                    });
+                                  }}
+                                  onKeyDown={(event) => {
+                                    if (event.key === "Enter" || event.key === " ") {
+                                      event.preventDefault();
+                                      event.stopPropagation();
+                                      setAssignmentPreview({
+                                        name: attachment.name,
+                                        preview: attachment.preview,
+                                        mimeType: attachment.mimeType ?? null,
+                                      });
+                                    }
+                                  }}
+                                  tabIndex={0}
                                   className="group relative flex flex-col overflow-hidden rounded-lg border border-slate-700 bg-slate-900/80"
                                 >
                                   {attachment.preview.startsWith("data:application/pdf") ? (
@@ -2236,6 +2257,7 @@ export default function DashboardPage() {
                                   <a
                                     href={attachment.preview}
                                     download={attachment.name}
+                                    onClick={(event) => event.stopPropagation()}
                                     className="absolute right-2 top-2 rounded-full border border-slate-500/60 bg-slate-900/80 px-2 py-0.5 text-[10px] text-slate-200 opacity-0 transition group-hover:opacity-100"
                                   >
                                     İndir
