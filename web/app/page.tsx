@@ -1381,386 +1381,6 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {assignmentModalOpen && selectedAssignment ? (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-8">
-              <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl shadow-slate-950/60">
-                <button
-                  type="button"
-                  onClick={closeAssignmentDetail}
-                  className="absolute right-4 top-4 rounded-full border border-slate-600/60 bg-slate-900/80 px-3 py-1 text-xs text-slate-200 transition hover:border-rose-400/60 hover:text-rose-200"
-                >
-                  Kapat
-                </button>
-                <div className="space-y-6 p-6 md:p-8">
-                  <div className="space-y-2">
-                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <p className="text-sm uppercase tracking-[0.35em] text-slate-500">Zimmet</p>
-                        <h3 className="text-2xl font-semibold text-white">{selectedAssignment.plate}</h3>
-                        <p className="text-sm text-slate-300">
-                          {selectedAssignment.personName}
-                          {selectedAssignment.personTitle ? ` • ${selectedAssignment.personTitle}` : ""}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAssignmentEditMode((prev) => !prev);
-                            setAssignmentEditError(null);
-                            setAssignmentDetailMessage(null);
-                            setAssignmentEditForm(prepareAssignmentFormFromEntry(selectedAssignment));
-                            setAssignmentEditFilesKey(Date.now());
-                          }}
-                          className="inline-flex items-center rounded-lg border border-sky-400/60 bg-sky-500/15 px-4 py-2 text-sm text-sky-100 transition hover:border-sky-300/80 hover:bg-sky-500/25"
-                        >
-                          {assignmentEditMode ? "Düzenlemeyi Kapat" : "Düzenle"}
-                        </button>
-                        <a
-                          href={selectedAssignment.attachments[0]?.preview ?? "#"}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`inline-flex items-center rounded-lg border px-4 py-2 text-sm transition ${
-                            selectedAssignment.attachments.length > 0
-                              ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-100 hover:border-emerald-300/70 hover:bg-emerald-500/30"
-                              : "pointer-events-none border-slate-600/60 bg-slate-800/60 text-slate-400"
-                          }`}
-                        >
-                          İlk Görseli Aç
-                        </a>
-                      </div>
-                    </div>
-                    <p className="text-xs text-slate-500">
-                      {`Kaydedilme: ${formatDate(selectedAssignment.createdAt)} • Zimmet Tarihi: ${formatDate(
-                        selectedAssignment.assignmentDate,
-                      )}`}
-                    </p>
-                  </div>
-
-                  {assignmentDetailMessage ? (
-                    <p className="rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-4 py-2 text-xs text-emerald-100">
-                      {assignmentDetailMessage}
-                    </p>
-                  ) : null}
-
-                  {assignmentEditMode ? (
-                    <form className="space-y-4" onSubmit={handleAssignmentEditSubmit}>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="flex flex-col gap-2">
-                          <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
-                          <input
-                            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                            value={assignmentEditForm.plate}
-                            onChange={(event) =>
-                              setAssignmentEditForm((prev) => ({ ...prev, plate: event.target.value }))
-                            }
-                            onBlur={(event) =>
-                              setAssignmentEditForm((prev) => ({ ...prev, plate: event.target.value.trim().toUpperCase() }))
-                            }
-                          />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Personel Adı</label>
-                          <input
-                            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                            value={assignmentEditForm.personName}
-                            onChange={(event) =>
-                              setAssignmentEditForm((prev) => ({ ...prev, personName: event.target.value }))
-                            }
-                          />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Görev / Departman</label>
-                          <input
-                            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                            value={assignmentEditForm.personTitle}
-                            onChange={(event) =>
-                              setAssignmentEditForm((prev) => ({ ...prev, personTitle: event.target.value }))
-                            }
-                          />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Beklenen Teslim</label>
-                          <input
-                            type="date"
-                            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                            value={assignmentEditForm.expectedReturnDate}
-                            onChange={(event) =>
-                              setAssignmentEditForm((prev) => ({ ...prev, expectedReturnDate: event.target.value }))
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="flex flex-col gap-2">
-                          <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Zimmet Tarihi</label>
-                          <input
-                            type="date"
-                            className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                            value={assignmentEditForm.assignmentDate}
-                            onChange={(event) =>
-                              setAssignmentEditForm((prev) => ({ ...prev, assignmentDate: event.target.value }))
-                            }
-                          />
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Açıklama</label>
-                          <textarea
-                            className="min-h-[90px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                            value={assignmentEditForm.description}
-                            onChange={(event) =>
-                              setAssignmentEditForm((prev) => ({ ...prev, description: event.target.value }))
-                            }
-                          />
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-xs uppercase tracking-[0.25em] text-slate-400">
-                          Yeni Fotoğraf / Belge
-                        </label>
-                        <input
-                          key={assignmentEditFilesKey}
-                          type="file"
-                          accept="image/*,application/pdf"
-                          multiple
-                          className="block w-full cursor-pointer rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-sky-500/20 file:px-3 file:py-1 file:text-sky-100 hover:file:bg-sky-500/30"
-                          onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                            const files = event.target.files ? Array.from(event.target.files) : [];
-                            setAssignmentEditForm((prev) => ({ ...prev, files }));
-                          }}
-                        />
-                        {assignmentEditForm.files.length > 0 ? (
-                          <div className="flex flex-wrap gap-2 rounded-lg border border-slate-700/60 bg-slate-900/60 p-3">
-                            {assignmentEditForm.files.map((file, index) => (
-                              <span
-                                key={`${file.name}-${index}`}
-                                className="inline-flex items-center gap-2 rounded-md border border-slate-600 bg-slate-800/80 px-3 py-1 text-xs text-slate-100"
-                              >
-                                <span className="max-w-[160px] truncate">{file.name}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleAssignmentEditFileRemove(index)}
-                                  className="rounded-full border border-slate-500/60 px-2 text-[10px] text-slate-200 transition hover:border-rose-400/60 hover:text-rose-200"
-                                >
-                                  Sil
-                                </button>
-                              </span>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="text-[11px] text-slate-500">
-                            Mevcut ekler korunur. Buradan yeni görsel veya PDF ekleyebilirsiniz.
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
-                        <input
-                          className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
-                          type="password"
-                          value={adminPassword}
-                          onChange={(event) => setAdminPassword(event.target.value)}
-                        />
-                      </div>
-
-                      {assignmentEditError ? (
-                        <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
-                          {assignmentEditError}
-                        </p>
-                      ) : null}
-
-                      <div className="flex items-center justify-end gap-3">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAssignmentEditMode(false);
-                            setAssignmentEditError(null);
-                            setAssignmentDetailMessage(null);
-                          }}
-                          className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-4 py-2 text-xs text-slate-200 transition hover:border-slate-500/60 hover:text-white"
-                        >
-                          İptal
-                        </button>
-                        <button
-                          type="submit"
-                          disabled={assignmentEditBusy}
-                          className="inline-flex items-center justify-center rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:border-emerald-300/70 hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {assignmentEditBusy ? "Güncelleniyor..." : "Değişiklikleri Kaydet"}
-                        </button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="space-y-6">
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
-                          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Teslim Bilgisi</p>
-                          <ul className="mt-3 space-y-2 text-sm text-slate-200">
-                            <li>
-                              <span className="text-slate-400">Zimmet Tarihi: </span>
-                              {formatDate(selectedAssignment.assignmentDate)}
-                            </li>
-                            <li>
-                              <span className="text-slate-400">Beklenen Teslim: </span>
-                              {formatDate(selectedAssignment.expectedReturnDate)}
-                            </li>
-                            <li>
-                              <span className="text-slate-400">Durum: </span>
-                              {assignmentReturnMeta(selectedAssignment.expectedReturnDate).label}
-                            </li>
-                          </ul>
-                        </div>
-                        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
-                          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Sorumlu</p>
-                          <ul className="mt-3 space-y-2 text-sm text-slate-200">
-                            <li>
-                              <span className="text-slate-400">Personel: </span>
-                              {selectedAssignment.personName}
-                            </li>
-                            <li>
-                              <span className="text-slate-400">Görev: </span>
-                              {selectedAssignment.personTitle ?? "-"}
-                            </li>
-                          </ul>
-                        </div>
-                      </div>
-
-                      {selectedAssignment.description ? (
-                        <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
-                          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Açıklama</p>
-                          <p className="mt-2 text-sm text-slate-200">{selectedAssignment.description}</p>
-                        </div>
-                      ) : null}
-
-                      <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                          <h4 className="text-sm font-semibold text-white">Belge ve Fotoğraflar</h4>
-                          <span className="text-xs text-slate-400">
-                            {selectedAssignment.attachments.length} adet ek
-                          </span>
-                        </div>
-                        {selectedAssignment.attachments.length > 0 ? (
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            {selectedAssignment.attachments.map((attachment) => (
-                              <figure
-                                key={attachment.id}
-                                role="button"
-                                tabIndex={0}
-                                onClick={() =>
-                                  setAssignmentPreview({
-                                    name: attachment.name,
-                                    preview: attachment.preview,
-                                    mimeType: attachment.mimeType ?? null,
-                                  })
-                                }
-                                onKeyDown={(event) => {
-                                  if (event.key === "Enter" || event.key === " ") {
-                                    event.preventDefault();
-                                    setAssignmentPreview({
-                                      name: attachment.name,
-                                      preview: attachment.preview,
-                                      mimeType: attachment.mimeType ?? null,
-                                    });
-                                  }
-                                }}
-                                className="group relative cursor-zoom-in overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 outline-none transition hover:border-sky-500/60 focus:border-sky-500/60"
-                              >
-                                {attachment.preview.startsWith("data:application/pdf") ? (
-                                  <div className="flex h-48 w-full items-center justify-center bg-slate-800 text-sm text-slate-200">
-                                    PDF Önizleme
-                                  </div>
-                                ) : (
-                                  <img
-                                    src={attachment.preview}
-                                    alt={attachment.name}
-                                    className="h-48 w-full object-cover transition group-hover:scale-[1.01]"
-                                  />
-                                )}
-                                <figcaption className="flex items-center justify-between gap-3 px-3 py-2 text-xs text-slate-300">
-                                  <span className="truncate">{attachment.name}</span>
-                                  {attachment.size ? (
-                                    <span className="text-[10px] text-slate-500">{formatFileSize(attachment.size)}</span>
-                                  ) : null}
-                                </figcaption>
-                                <span className="absolute right-3 top-3 rounded-full border border-slate-500/60 bg-slate-900/80 px-3 py-1 text-[10px] text-slate-100 opacity-0 transition group-hover:opacity-100">
-                                  Görüntüle
-                                </span>
-                              </figure>
-                            ))}
-                          </div>
-                        ) : (
-                          <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
-                            Bu kayda ait görsel eklenmemiş.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {assignmentPreview ? (
-            <div
-              className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/90 px-4 py-8"
-              onClick={() => setAssignmentPreview(null)}
-            >
-              <div
-                className="relative w-full max-w-4xl rounded-2xl border border-slate-800 bg-slate-900/95 p-6 shadow-2xl shadow-slate-950/70"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Dosya Önizleme</p>
-                    <h3 className="text-lg font-semibold text-white">{assignmentPreview.name}</h3>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <a
-                      href={assignmentPreview.preview}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="rounded-lg border border-sky-400/60 bg-sky-500/15 px-3 py-1.5 text-xs text-sky-100 transition hover:border-sky-300/80 hover:bg-sky-500/25"
-                    >
-                      Yeni Sekmede Aç
-                    </a>
-                    <a
-                      href={assignmentPreview.preview}
-                      download={assignmentPreview.name}
-                      className="rounded-lg border border-emerald-400/60 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-100 transition hover:border-emerald-300/80 hover:bg-emerald-500/25"
-                    >
-                      İndir
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => setAssignmentPreview(null)}
-                      className="rounded-full border border-slate-600/60 bg-slate-900/80 px-3 py-1 text-xs text-slate-200 transition hover:border-rose-400/60 hover:text-rose-200"
-                    >
-                      Kapat
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  {assignmentPreview.mimeType?.includes("pdf") ? (
-                    <iframe
-                      title={assignmentPreview.name}
-                      src={assignmentPreview.preview}
-                      className="h-[70vh] w-full rounded-xl border border-slate-800 bg-white"
-                    />
-                  ) : (
-                    <img
-                      src={assignmentPreview.preview}
-                      alt={assignmentPreview.name}
-                      className="max-h-[75vh] w-full rounded-xl border border-slate-800 bg-slate-950 object-contain"
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : null}
         </section>
       );
     }
@@ -2838,29 +2458,408 @@ export default function DashboardPage() {
     );
   };
 
-  return (
-    <section className="space-y-8">
-      <nav className="flex flex-wrap gap-2 rounded-full border border-slate-800 bg-slate-900/70 p-1 text-sm">
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => setTab(tab.id)}
-              className={`rounded-full px-4 py-2 transition ${
-                isActive
-                  ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/40"
-                  : "text-slate-300 hover:bg-slate-800 hover:text-white"
-              }`}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </nav>
+  const tabContent = renderTabContent();
 
-      {renderTabContent()}
-    </section>
+  return (
+    <>
+      <section className="space-y-8">
+        <nav className="flex flex-wrap gap-2 rounded-full border border-slate-800 bg-slate-900/70 p-1 text-sm">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setTab(tab.id)}
+                className={`rounded-full px-4 py-2 transition ${
+                  isActive
+                    ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/40"
+                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </nav>
+
+        {tabContent}
+      </section>
+
+      {assignmentModalOpen && selectedAssignment ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 px-4 py-8">
+          <div className="relative max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-800 bg-slate-900 shadow-2xl shadow-slate-950/60">
+            <button
+              type="button"
+              onClick={closeAssignmentDetail}
+              className="absolute right-4 top-4 rounded-full border border-slate-600/60 bg-slate-900/80 px-3 py-1 text-xs text-slate-200 transition hover:border-rose-400/60 hover:text-rose-200"
+            >
+              Kapat
+            </button>
+            <div className="space-y-6 p-6 md:p-8">
+              <div className="space-y-2">
+                <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p className="text-sm uppercase tracking-[0.35em] text-slate-500">Zimmet</p>
+                    <h3 className="text-2xl font-semibold text-white">{selectedAssignment.plate}</h3>
+                    <p className="text-sm text-slate-300">
+                      {selectedAssignment.personName}
+                      {selectedAssignment.personTitle ? ` • ${selectedAssignment.personTitle}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssignmentEditMode((prev) => !prev);
+                        setAssignmentEditError(null);
+                        setAssignmentDetailMessage(null);
+                        setAssignmentEditForm(prepareAssignmentFormFromEntry(selectedAssignment));
+                        setAssignmentEditFilesKey(Date.now());
+                      }}
+                      className="inline-flex items-center rounded-lg border border-sky-400/60 bg-sky-500/15 px-4 py-2 text-sm text-sky-100 transition hover:border-sky-300/80 hover:bg-sky-500/25"
+                    >
+                      {assignmentEditMode ? "Düzenlemeyi Kapat" : "Düzenle"}
+                    </button>
+                    <a
+                      href={selectedAssignment.attachments[0]?.preview ?? "#"}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`inline-flex items-center rounded-lg border px-4 py-2 text-sm transition ${
+                        selectedAssignment.attachments.length > 0
+                          ? "border-emerald-400/50 bg-emerald-500/20 text-emerald-100 hover:border-emerald-300/70 hover:bg-emerald-500/30"
+                          : "pointer-events-none border-slate-600/60 bg-slate-800/60 text-slate-400"
+                      }`}
+                    >
+                      İlk Görseli Aç
+                    </a>
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500">
+                  {`Kaydedilme: ${formatDate(selectedAssignment.createdAt)} • Zimmet Tarihi: ${formatDate(
+                    selectedAssignment.assignmentDate,
+                  )}`}
+                </p>
+              </div>
+
+              {assignmentDetailMessage ? (
+                <p className="rounded-lg border border-emerald-400/30 bg-emerald-500/15 px-4 py-2 text-xs text-emerald-100">
+                  {assignmentDetailMessage}
+                </p>
+              ) : null}
+
+              {assignmentEditMode ? (
+                <form className="space-y-4" onSubmit={handleAssignmentEditSubmit}>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
+                      <input
+                        className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                        value={assignmentEditForm.plate}
+                        onChange={(event) => setAssignmentEditForm((prev) => ({ ...prev, plate: event.target.value }))}
+                        onBlur={(event) =>
+                          setAssignmentEditForm((prev) => ({ ...prev, plate: event.target.value.trim().toUpperCase() }))
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Personel Adı</label>
+                      <input
+                        className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                        value={assignmentEditForm.personName}
+                        onChange={(event) =>
+                          setAssignmentEditForm((prev) => ({ ...prev, personName: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Görev / Departman</label>
+                      <input
+                        className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                        value={assignmentEditForm.personTitle}
+                        onChange={(event) =>
+                          setAssignmentEditForm((prev) => ({ ...prev, personTitle: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Beklenen Teslim</label>
+                      <input
+                        type="date"
+                        className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                        value={assignmentEditForm.expectedReturnDate}
+                        onChange={(event) =>
+                          setAssignmentEditForm((prev) => ({ ...prev, expectedReturnDate: event.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Zimmet Tarihi</label>
+                      <input
+                        type="date"
+                        className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                        value={assignmentEditForm.assignmentDate}
+                        onChange={(event) =>
+                          setAssignmentEditForm((prev) => ({ ...prev, assignmentDate: event.target.value }))
+                        }
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Açıklama</label>
+                      <textarea
+                        className="min-h-[90px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                        value={assignmentEditForm.description}
+                        onChange={(event) =>
+                          setAssignmentEditForm((prev) => ({ ...prev, description: event.target.value }))
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yeni Fotoğraf / Belge</label>
+                    <input
+                      key={assignmentEditFilesKey}
+                      type="file"
+                      accept="image/*,application/pdf"
+                      multiple
+                      className="block w-full cursor-pointer rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-sky-500/20 file:px-3 file:py-1 file:text-sky-100 hover:file:bg-sky-500/30"
+                      onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                        const files = event.target.files ? Array.from(event.target.files) : [];
+                        setAssignmentEditForm((prev) => ({ ...prev, files }));
+                      }}
+                    />
+                    {assignmentEditForm.files.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 rounded-lg border border-slate-700/60 bg-slate-900/60 p-3">
+                        {assignmentEditForm.files.map((file, index) => (
+                          <span
+                            key={`${file.name}-${index}`}
+                            className="inline-flex items-center gap-2 rounded-md border border-slate-600 bg-slate-800/80 px-3 py-1 text-xs text-slate-100"
+                          >
+                            <span className="max-w-[160px] truncate">{file.name}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleAssignmentEditFileRemove(index)}
+                              className="rounded-full border border-slate-500/60 px-2 text-[10px] text-slate-200 transition hover:border-rose-400/60 hover:text-rose-200"
+                            >
+                              Sil
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-500">
+                        Mevcut ekler korunur. Buradan yeni görsel veya PDF ekleyebilirsiniz.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+                    <input
+                      className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-sky-400 focus:outline-none"
+                      type="password"
+                      value={adminPassword}
+                      onChange={(event) => setAdminPassword(event.target.value)}
+                    />
+                  </div>
+
+                  {assignmentEditError ? (
+                    <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+                      {assignmentEditError}
+                    </p>
+                  ) : null}
+
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssignmentEditMode(false);
+                        setAssignmentEditError(null);
+                        setAssignmentDetailMessage(null);
+                      }}
+                      className="rounded-lg border border-slate-700/70 bg-slate-900/70 px-4 py-2 text-xs text-slate-200 transition hover:border-slate-500/60 hover:text-white"
+                    >
+                      İptal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={assignmentEditBusy}
+                      className="inline-flex items-center justify-center rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-4 py-2 text-sm font-medium text-emerald-100 transition hover:border-emerald-300/70 hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {assignmentEditBusy ? "Güncelleniyor..." : "Değişiklikleri Kaydet"}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="space-y-6">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Teslim Bilgisi</p>
+                      <ul className="mt-3 space-y-2 text-sm text-slate-200">
+                        <li>
+                          <span className="text-slate-400">Zimmet Tarihi: </span>
+                          {formatDate(selectedAssignment.assignmentDate)}
+                        </li>
+                        <li>
+                          <span className="text-slate-400">Beklenen Teslim: </span>
+                          {formatDate(selectedAssignment.expectedReturnDate)}
+                        </li>
+                        <li>
+                          <span className="text-slate-400">Durum: </span>
+                          {assignmentReturnMeta(selectedAssignment.expectedReturnDate).label}
+                        </li>
+                      </ul>
+                    </div>
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Sorumlu</p>
+                      <ul className="mt-3 space-y-2 text-sm text-slate-200">
+                        <li>
+                          <span className="text-slate-400">Personel: </span>
+                          {selectedAssignment.personName}
+                        </li>
+                        <li>
+                          <span className="text-slate-400">Görev: </span>
+                          {selectedAssignment.personTitle ?? "-"}
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {selectedAssignment.description ? (
+                    <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-4">
+                      <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Açıklama</p>
+                      <p className="mt-2 text-sm text-slate-200">{selectedAssignment.description}</p>
+                    </div>
+                  ) : null}
+
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-sm font-semibold text-white">Belge ve Fotoğraflar</h4>
+                      <span className="text-xs text-slate-400">{selectedAssignment.attachments.length} adet ek</span>
+                    </div>
+                    {selectedAssignment.attachments.length > 0 ? (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        {selectedAssignment.attachments.map((attachment) => (
+                          <figure
+                            key={attachment.id}
+                            role="button"
+                            tabIndex={0}
+                            onClick={() =>
+                              setAssignmentPreview({
+                                name: attachment.name,
+                                preview: attachment.preview,
+                                mimeType: attachment.mimeType ?? null,
+                              })
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter" || event.key === " ") {
+                                event.preventDefault();
+                                setAssignmentPreview({
+                                  name: attachment.name,
+                                  preview: attachment.preview,
+                                  mimeType: attachment.mimeType ?? null,
+                                });
+                              }
+                            }}
+                            className="group relative cursor-zoom-in overflow-hidden rounded-xl border border-slate-800 bg-slate-900/80 outline-none transition hover:border-sky-500/60 focus:border-sky-500/60"
+                          >
+                            {attachment.preview.startsWith("data:application/pdf") ? (
+                              <div className="flex h-48 w-full items-center justify-center bg-slate-800 text-sm text-slate-200">
+                                PDF Önizleme
+                              </div>
+                            ) : (
+                              <img
+                                src={attachment.preview}
+                                alt={attachment.name}
+                                className="h-48 w-full object-cover transition group-hover:scale-[1.01]"
+                              />
+                            )}
+                            <figcaption className="flex items-center justify-between gap-3 px-3 py-2 text-xs text-slate-300">
+                              <span className="truncate">{attachment.name}</span>
+                              {attachment.size ? (
+                                <span className="text-[10px] text-slate-500">{formatFileSize(attachment.size)}</span>
+                              ) : null}
+                            </figcaption>
+                            <span className="absolute right-3 top-3 rounded-full border border-slate-500/60 bg-slate-900/80 px-3 py-1 text-[10px] text-slate-100 opacity-0 transition group-hover:opacity-100">
+                              Görüntüle
+                            </span>
+                          </figure>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
+                        Bu kayda ait görsel eklenmemiş.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {assignmentPreview ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/90 px-4 py-8"
+          onClick={() => setAssignmentPreview(null)}
+        >
+          <div
+            className="relative w-full max-w-4xl rounded-2xl border border-slate-800 bg-slate-900/95 p-6 shadow-2xl shadow-slate-950/70"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Dosya Önizleme</p>
+                <h3 className="text-lg font-semibold text-white">{assignmentPreview.name}</h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <a
+                  href={assignmentPreview.preview}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-lg border border-sky-400/60 bg-sky-500/15 px-3 py-1.5 text-xs text-sky-100 transition hover:border-sky-300/80 hover:bg-sky-500/25"
+                >
+                  Yeni Sekmede Aç
+                </a>
+                <a
+                  href={assignmentPreview.preview}
+                  download={assignmentPreview.name}
+                  className="rounded-lg border border-emerald-400/60 bg-emerald-500/15 px-3 py-1.5 text-xs text-emerald-100 transition hover:border-emerald-300/80 hover:bg-emerald-500/25"
+                >
+                  İndir
+                </a>
+                <button
+                  type="button"
+                  onClick={() => setAssignmentPreview(null)}
+                  className="rounded-full border border-slate-600/60 bg-slate-900/80 px-3 py-1 text-xs text-slate-200 transition hover:border-rose-400/60 hover:text-rose-200"
+                >
+                  Kapat
+                </button>
+              </div>
+            </div>
+            <div className="mt-4">
+              {assignmentPreview.mimeType?.includes("pdf") ? (
+                <iframe
+                  title={assignmentPreview.name}
+                  src={assignmentPreview.preview}
+                  className="h-[70vh] w-full rounded-xl border border-slate-800 bg-white"
+                />
+              ) : (
+                <img
+                  src={assignmentPreview.preview}
+                  alt={assignmentPreview.name}
+                  className="max-h-[75vh] w-full rounded-xl border border-slate-800 bg-slate-950 object-contain"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
