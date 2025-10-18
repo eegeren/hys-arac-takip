@@ -42,7 +42,14 @@ type Vehicle = {
   documents?: VehicleDocument[];
 };
 
-type TabId = "vehicles" | "vehicle-create" | "assignments" | "damages" | "expenses" | "documents";
+type TabId =
+  | "vehicles"
+  | "vehicle-create"
+  | "assignments"
+  | "damages"
+  | "expenses"
+  | "fuels"
+  | "documents";
 
 type VehicleFormState = {
   plate: string;
@@ -100,6 +107,18 @@ type ExpenseEntry = {
   attachments: ExpenseAttachment[];
 };
 
+type FuelEntry = {
+  id: number;
+  plate: string;
+  liters: number;
+  amount: number;
+  refuelDate: string;
+  createdAt: string;
+  odometer: number | null;
+  note: string | null;
+  unitPrice: number | null;
+};
+
 type AssignmentAttachment = {
   id: number;
   name: string;
@@ -145,6 +164,15 @@ type ExpenseFormState = {
   description: string;
   createdAt: string;
   files: File[];
+};
+
+type FuelFormState = {
+  plate: string;
+  liters: string;
+  amount: string;
+  refuelDate: string;
+  odometer: string;
+  note: string;
 };
 
 type AssignmentFormState = {
@@ -196,6 +224,19 @@ type ExpenseApiResponse = {
   }>;
 };
 
+type FuelApiResponse = {
+  id: number;
+  vehicle_id: number | null;
+  plate: string;
+  liters: number;
+  amount: number;
+  refuel_date: string | null;
+  odometer: number | null;
+  note: string | null;
+  created_at: string | null;
+  unit_price?: number | null;
+};
+
 type AssignmentApiResponse = {
   id: number;
   vehicle_id: number | null;
@@ -224,6 +265,7 @@ const tabs: Array<{ id: TabId; label: string }> = [
   { id: "assignments", label: "Zimmetler" },
   { id: "damages", label: "Hasarlar" },
   { id: "expenses", label: "Masraflar" },
+  { id: "fuels", label: "Yakıtlar" },
   { id: "documents", label: "Belgeler" },
 ];
 
@@ -428,6 +470,15 @@ const createInitialExpenseFormState = (): ExpenseFormState => ({
   files: [],
 });
 
+const createInitialFuelFormState = (): FuelFormState => ({
+  plate: "",
+  liters: "",
+  amount: "",
+  refuelDate: new Date().toISOString().split("T")[0],
+  odometer: "",
+  note: "",
+});
+
 const createInitialAssignmentFormState = (): AssignmentFormState => ({
   plate: "",
   personName: "",
@@ -507,6 +558,23 @@ const adaptExpenseResponse = (item: ExpenseApiResponse): ExpenseEntry => ({
     preview: toDataUrl(attachment.mime_type, attachment.content_base64),
     size: attachment.size_bytes ?? null,
   })),
+});
+
+const adaptFuelResponse = (item: FuelApiResponse): FuelEntry => ({
+  id: item.id,
+  plate: item.plate,
+  liters: typeof item.liters === "number" ? item.liters : Number(item.liters ?? 0),
+  amount: typeof item.amount === "number" ? item.amount : Number(item.amount ?? 0),
+  refuelDate: item.refuel_date ?? item.created_at ?? new Date().toISOString(),
+  createdAt: item.created_at ?? item.refuel_date ?? new Date().toISOString(),
+  odometer: item.odometer ?? null,
+  note: item.note ?? null,
+  unitPrice:
+    typeof item.unit_price === "number"
+      ? item.unit_price
+      : item.liters
+        ? Number(item.amount ?? 0) / Number(item.liters || 1)
+        : null,
 });
 
 const adaptAssignmentResponse = (item: AssignmentApiResponse): AssignmentEntry => ({
@@ -656,6 +724,14 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
   const [expenseListLoading, setExpenseListLoading] = useState(true);
   const [expenseListError, setExpenseListError] = useState<string | null>(null);
 
+  const [fuelForm, setFuelForm] = useState<FuelFormState>(() => createInitialFuelFormState());
+  const [fuelLog, setFuelLog] = useState<FuelEntry[]>([]);
+  const [fuelError, setFuelError] = useState<string | null>(null);
+  const [fuelMessage, setFuelMessage] = useState<string | null>(null);
+  const [fuelBusy, setFuelBusy] = useState(false);
+  const [fuelListLoading, setFuelListLoading] = useState(true);
+  const [fuelListError, setFuelListError] = useState<string | null>(null);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const stored = window.localStorage.getItem(PASSWORD_STORAGE_KEY);
@@ -780,6 +856,22 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
     }
   }, []);
 
+  const loadFuels = useCallback(async () => {
+    setFuelListLoading(true);
+    try {
+      const res = await fetch(apiUrl("/api/fuels"));
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      const data = (await res.json()) as FuelApiResponse[];
+      setFuelLog(data.map(adaptFuelResponse));
+      setFuelListError(null);
+    } catch (err) {
+      console.error(err);
+      setFuelListError((err as Error).message || "Yakıt kayıtları çekilirken hata oluştu");
+    } finally {
+      setFuelListLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadDocs();
   }, [loadDocs]);
@@ -799,6 +891,10 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
   useEffect(() => {
     loadExpenses();
   }, [loadExpenses]);
+
+  useEffect(() => {
+    loadFuels();
+  }, [loadFuels]);
 
   useEffect(() => {
     if (!assignmentPreview) return;
@@ -1351,6 +1447,81 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
   const totalExpense = useMemo(
     () => expenseLog.reduce((sum, entry) => sum + (Number.isFinite(entry.amount) ? entry.amount : 0), 0),
     [expenseLog],
+  );
+
+  const handleFuelSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setFuelError(null);
+    if (!adminPassword.trim()) {
+      setFuelError("Yönetici şifresi gerekli.");
+      return;
+    }
+    if (!fuelForm.plate.trim()) {
+      setFuelError("Plaka alanı zorunlu.");
+      return;
+    }
+    const parsedLiters = Number(fuelForm.liters.replace(",", "."));
+    if (!Number.isFinite(parsedLiters) || parsedLiters <= 0) {
+      setFuelError("Geçerli bir litre bilgisi giriniz.");
+      return;
+    }
+    const parsedAmount = Number(fuelForm.amount.replace(",", "."));
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
+      setFuelError("Geçerli bir tutar giriniz.");
+      return;
+    }
+    const odometerTrimmed = fuelForm.odometer.trim();
+    const parsedOdometer = odometerTrimmed ? Number(odometerTrimmed.replace(",", "")) : null;
+    if (parsedOdometer !== null && (!Number.isFinite(parsedOdometer) || parsedOdometer < 0)) {
+      setFuelError("Geçerli bir kilometre değeri giriniz.");
+      return;
+    }
+
+    setFuelBusy(true);
+    try {
+      const payload = {
+        plate: fuelForm.plate.trim().toUpperCase(),
+        liters: parsedLiters,
+        amount: parsedAmount,
+        refuel_date: fuelForm.refuelDate,
+        odometer: parsedOdometer !== null ? Math.round(parsedOdometer) : null,
+        note: fuelForm.note.trim() || null,
+        admin_password: adminPassword.trim(),
+      };
+      const res = await fetch(apiUrl("/api/fuels"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(await extractErrorMessage(res));
+      await res.json();
+      await loadFuels();
+      setFuelListError(null);
+      setFuelForm((prev) => ({
+        ...prev,
+        plate: "",
+        liters: "",
+        amount: "",
+        note: "",
+        odometer: parsedOdometer !== null ? String(Math.round(parsedOdometer)) : "",
+      }));
+      flashMessage(setFuelMessage, "Yakıt kaydı eklendi");
+    } catch (err) {
+      console.error(err);
+      setFuelError((err as Error).message || "Yakıt kaydedilemedi");
+    } finally {
+      setFuelBusy(false);
+    }
+  };
+
+  const totalFuelAmount = useMemo(
+    () => fuelLog.reduce((sum, entry) => sum + (Number.isFinite(entry.amount) ? entry.amount : 0), 0),
+    [fuelLog],
+  );
+
+  const totalFuelLiters = useMemo(
+    () => fuelLog.reduce((sum, entry) => sum + (Number.isFinite(entry.liters) ? entry.liters : 0), 0),
+    [fuelLog],
   );
 
   const renderTabContent = () => {
@@ -2407,6 +2578,170 @@ const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; 
                             </figure>
                           ))}
                         </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    if (activeTab === "fuels") {
+      const litersLabel = new Intl.NumberFormat("tr-TR", { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(
+        totalFuelLiters,
+      );
+      return (
+        <section className="space-y-6">
+          <header>
+            <h2 className="text-2xl font-semibold text-white">Yakıt Takibi</h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Araçların yakıt alımlarını litre, tutar ve kilometre bilgileriyle kaydedin.
+            </p>
+          </header>
+
+          <div className="grid gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+            <form
+              className="flex flex-col gap-3 rounded-2xl border border-slate-800 bg-slate-900/80 p-5"
+              onSubmit={handleFuelSubmit}
+            >
+              <div>
+                <h3 className="text-lg font-semibold text-white">Yakıt Kaydı Ekle</h3>
+                <p className="text-xs text-slate-400">Plaka, litre ve ödenen tutarı girin.</p>
+              </div>
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Plaka</label>
+              <input
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
+                placeholder="34 ABC 123"
+                value={fuelForm.plate}
+                onChange={(event) => setFuelForm((prev) => ({ ...prev, plate: event.target.value }))}
+              />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Tarih</label>
+                  <input
+                    type="date"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
+                    value={fuelForm.refuelDate}
+                    onChange={(event) => setFuelForm((prev) => ({ ...prev, refuelDate: event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Litre</label>
+                  <input
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
+                    placeholder="Örn. 55"
+                    value={fuelForm.liters}
+                    onChange={(event) => setFuelForm((prev) => ({ ...prev, liters: event.target.value }))}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Tutar</label>
+                  <input
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
+                    placeholder="Örn. 3200"
+                    value={fuelForm.amount}
+                    onChange={(event) => setFuelForm((prev) => ({ ...prev, amount: event.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Kilometre</label>
+                  <input
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
+                    placeholder="Opsiyonel"
+                    value={fuelForm.odometer}
+                    onChange={(event) => setFuelForm((prev) => ({ ...prev, odometer: event.target.value }))}
+                  />
+                </div>
+              </div>
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Not</label>
+              <textarea
+                className="min-h-[80px] rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
+                placeholder="Doldurulan istasyon, yakıt tipi vb."
+                value={fuelForm.note}
+                onChange={(event) => setFuelForm((prev) => ({ ...prev, note: event.target.value }))}
+              />
+              <label className="text-xs uppercase tracking-[0.25em] text-slate-400">Yönetici Şifresi</label>
+              <input
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white focus:border-amber-400 focus:outline-none"
+                placeholder="Yönetici şifresi"
+                type="password"
+                value={adminPassword}
+                onChange={(event) => setAdminPassword(event.target.value)}
+              />
+              {fuelError ? (
+                <p className="mt-2 rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100">
+                  {fuelError}
+                </p>
+              ) : null}
+              {fuelMessage ? (
+                <p className="mt-2 rounded-lg border border-emerald-400/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                  {fuelMessage}
+                </p>
+              ) : null}
+              <button
+                type="submit"
+                disabled={fuelBusy}
+                className="inline-flex items-center justify-center rounded-lg border border-amber-400/40 bg-amber-500/20 px-4 py-2 text-sm font-medium text-amber-100 transition hover:border-amber-300/70 hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {fuelBusy ? "Kaydediliyor..." : "Yakıt Kaydet"}
+              </button>
+            </form>
+
+            <div className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/80 p-5">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-white">Yakıt Kayıtları</h3>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-xs text-slate-300">
+                    {fuelLog.length} kayıt
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-xs text-amber-100">
+                    {litersLabel} L
+                  </span>
+                  <span className="inline-flex items-center rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-xs text-emerald-100">
+                    {formatCurrency(totalFuelAmount)}
+                  </span>
+                </div>
+              </div>
+              {fuelListError ? (
+                <p className="rounded-lg border border-rose-400/30 bg-rose-500/10 p-4 text-sm text-rose-100">
+                  {fuelListError}
+                </p>
+              ) : fuelListLoading ? (
+                <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
+                  Yakıt kayıtları yükleniyor...
+                </p>
+              ) : fuelLog.length === 0 ? (
+                <p className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 text-sm text-slate-300">
+                  Henüz yakıt kaydı eklemediniz.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {fuelLog.map((entry) => (
+                    <article
+                      key={entry.id}
+                      className="rounded-lg border border-slate-800 bg-slate-900/70 p-4 shadow-sm shadow-slate-950/20"
+                    >
+                      <div className="flex items-center justify-between text-xs text-slate-400">
+                        <span>{formatDate(entry.refuelDate)}</span>
+                        <span className="inline-flex items-center rounded-full border border-amber-400/40 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.25em] text-amber-100">
+                          {entry.liters.toFixed(1)} L
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-sm text-slate-200">
+                        <span className="font-semibold text-white">{entry.plate}</span>
+                        <span>{formatCurrency(entry.amount)}</span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-xs text-slate-400">
+                        <span>{entry.odometer ? `${entry.odometer.toLocaleString("tr-TR")} km` : "KM belirtilmedi"}</span>
+                        <span>{entry.unitPrice ? `${entry.unitPrice.toFixed(2)} TL/L` : "-"}</span>
+                      </div>
+                      {entry.note ? (
+                        <p className="mt-2 text-xs text-slate-300">{entry.note}</p>
                       ) : null}
                     </article>
                   ))}

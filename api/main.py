@@ -129,6 +129,18 @@ def _ensure_tables():
     CREATE INDEX IF NOT EXISTS idx_damages_plate ON damages(plate);
     CREATE INDEX IF NOT EXISTS idx_assignments_plate ON assignments(plate);
     CREATE INDEX IF NOT EXISTS idx_expenses_plate ON expenses(plate);
+    CREATE TABLE IF NOT EXISTS fuel_entries (
+      id SERIAL PRIMARY KEY,
+      vehicle_id INT REFERENCES vehicles(id) ON DELETE SET NULL,
+      plate TEXT NOT NULL,
+      liters NUMERIC(10,2) NOT NULL,
+      amount NUMERIC(12,2) NOT NULL,
+      refuel_date DATE NOT NULL,
+      odometer INT,
+      note TEXT,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_fuel_entries_plate ON fuel_entries(plate);
     ALTER TABLE vehicles ADD COLUMN IF NOT EXISTS responsible_person TEXT;
     ALTER TABLE assignments ADD COLUMN IF NOT EXISTS vehicle_make TEXT;
     ALTER TABLE assignments ADD COLUMN IF NOT EXISTS vehicle_model TEXT;
@@ -540,6 +552,24 @@ class ExpenseUpdateRequest(BaseModel):
     description: str | None = None
     expense_date: date | None = None
     attachments: list[ExpenseAttachmentPayload] = []
+    admin_password: str
+
+class FuelCreateRequest(BaseModel):
+    plate: str
+    liters: float
+    amount: float
+    refuel_date: date
+    odometer: int | None = None
+    note: str | None = None
+    admin_password: str
+
+class FuelUpdateRequest(BaseModel):
+    plate: str | None = None
+    liters: float | None = None
+    amount: float | None = None
+    refuel_date: date | None = None
+    odometer: int | None = None
+    note: str | None = None
     admin_password: str
 
 class AssignmentAttachmentPayload(BaseModel):
@@ -1222,6 +1252,36 @@ def _serialize_expense_row(row: Mapping[str, object], attachments: list[Mapping[
         ],
     }
 
+def _serialize_fuel_entry(row: Mapping[str, object]):
+    amount = row.get("amount")
+    liters = row.get("liters")
+    try:
+        amount_value = float(amount) if amount is not None else 0.0
+    except TypeError:
+        amount_value = 0.0
+    try:
+        liters_value = float(liters) if liters is not None else 0.0
+    except TypeError:
+        liters_value = 0.0
+    odometer_raw = row.get("odometer")
+    try:
+        odometer_value = int(odometer_raw) if odometer_raw is not None else None
+    except (TypeError, ValueError):
+        odometer_value = None
+    unit_price = amount_value / liters_value if liters_value else None
+    return {
+        "id": row["id"],
+        "vehicle_id": row.get("vehicle_id"),
+        "plate": row["plate"],
+        "liters": liters_value,
+        "amount": amount_value,
+        "refuel_date": row["refuel_date"].isoformat() if row.get("refuel_date") else None,
+        "odometer": odometer_value,
+        "note": row.get("note"),
+        "unit_price": unit_price,
+        "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+    }
+
 def _resolve_vehicle_id(con, plate: str | None) -> int | None:
     if not plate:
         return None
@@ -1830,6 +1890,119 @@ def delete_expense(expense_id: int, admin_password: str):
         raise HTTPException(status_code=404, detail="Masraf kaydı bulunamadı")
     return Response(status_code=204)
 
+def list_fuel_entries():
+    with engine.begin() as con:
+        rows = con.execute(
+            text(
+                """
+                SELECT f.id, f.vehicle_id, f.plate, f.liters, f.amount, f.refuel_date,
+                       f.odometer, f.note, f.created_at
+                FROM fuel_entries f
+                ORDER BY f.refuel_date DESC, f.created_at DESC
+                """
+            )
+        ).mappings().all()
+    return [_serialize_fuel_entry(row) for row in rows]
+
+def _fetch_fuel_entry(con, fuel_id: int):
+    row = con.execute(
+        text(
+            """
+            SELECT f.id, f.vehicle_id, f.plate, f.liters, f.amount, f.refuel_date,
+                   f.odometer, f.note, f.created_at
+            FROM fuel_entries f
+            WHERE f.id = :id
+            """
+        ),
+        {"id": fuel_id},
+    ).mappings().first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Yakıt kaydı bulunamadı")
+    return _serialize_fuel_entry(row)
+
+def create_fuel_entry(body: FuelCreateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    plate = body.plate.strip().upper()
+    note = body.note.strip() if body.note else None
+    with engine.begin() as con:
+        vehicle_id = _resolve_vehicle_id(con, plate)
+        row = con.execute(
+            text(
+                """
+                INSERT INTO fuel_entries (vehicle_id, plate, liters, amount, refuel_date, odometer, note)
+                VALUES (:vehicle_id, :plate, :liters, :amount, :refuel_date, :odometer, :note)
+                RETURNING id, vehicle_id, plate, liters, amount, refuel_date, odometer, note, created_at
+                """
+            ),
+            {
+                "vehicle_id": vehicle_id,
+                "plate": plate,
+                "liters": body.liters,
+                "amount": body.amount,
+                "refuel_date": body.refuel_date,
+                "odometer": body.odometer,
+                "note": note if note else None,
+            },
+        ).mappings().first()
+        return _serialize_fuel_entry(row)
+
+def update_fuel_entry(fuel_id: int, body: FuelUpdateRequest):
+    if body.admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    with engine.begin() as con:
+        existing = con.execute(
+            text("SELECT id, plate FROM fuel_entries WHERE id = :id"),
+            {"id": fuel_id},
+        ).mappings().first()
+        if existing is None:
+            raise HTTPException(status_code=404, detail="Yakıt kaydı bulunamadı")
+
+        update_fields: dict[str, object] = {}
+        if body.plate is not None:
+            plate = body.plate.strip().upper()
+            update_fields["plate"] = plate
+            update_fields["vehicle_id"] = _resolve_vehicle_id(con, plate)
+        if body.liters is not None:
+            update_fields["liters"] = body.liters
+        if body.amount is not None:
+            update_fields["amount"] = body.amount
+        if body.refuel_date is not None:
+            update_fields["refuel_date"] = body.refuel_date
+        if body.odometer is not None:
+            update_fields["odometer"] = body.odometer
+        if body.note is not None:
+            note = body.note.strip()
+            update_fields["note"] = note if note else None
+
+        if update_fields:
+            params = {"id": fuel_id}
+            params.update(update_fields)
+            set_clause = ", ".join(f"{key} = :{key}" for key in update_fields.keys())
+            con.execute(
+                text(
+                    f"""
+                    UPDATE fuel_entries
+                    SET {set_clause}
+                    WHERE id = :id
+                    """
+                ),
+                params,
+            )
+        return _fetch_fuel_entry(con, fuel_id)
+
+def delete_fuel_entry(fuel_id: int, admin_password: str):
+    if admin_password != VEHICLE_ADMIN_PASSWORD:
+        raise HTTPException(status_code=403, detail="Şifre hatalı")
+    with engine.begin() as con:
+        deleted = con.execute(
+            text("DELETE FROM fuel_entries WHERE id = :id RETURNING id"),
+            {"id": fuel_id},
+        ).mappings().first()
+    if deleted is None:
+        raise HTTPException(status_code=404, detail="Yakıt kaydı bulunamadı")
+    return Response(status_code=204)
+
 def list_expenses():
     with engine.begin() as con:
         rows = con.execute(
@@ -2379,6 +2552,22 @@ def update_expense_api(expense_id: int, body: ExpenseUpdateRequest):
 @app.delete("/api/expenses/{expense_id}", status_code=204)
 def delete_expense_api(expense_id: int, admin_password: str = Query(..., description="Masraf silme şifresi")):
     return delete_expense(expense_id, admin_password)
+
+@app.get("/api/fuels")
+def fuel_entries_api():
+    return list_fuel_entries()
+
+@app.post("/api/fuels", status_code=201)
+def create_fuel_entry_api(body: FuelCreateRequest):
+    return create_fuel_entry(body)
+
+@app.put("/api/fuels/{fuel_id}")
+def update_fuel_entry_api(fuel_id: int, body: FuelUpdateRequest):
+    return update_fuel_entry(fuel_id, body)
+
+@app.delete("/api/fuels/{fuel_id}", status_code=204)
+def delete_fuel_entry_api(fuel_id: int, admin_password: str = Query(..., description="Yakıt kaydı silme şifresi")):
+    return delete_fuel_entry(fuel_id, admin_password)
 
 @app.post("/api/debug/run_notifications")
 def debug_run_notifications_api(
