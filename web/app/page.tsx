@@ -665,13 +665,13 @@ export default function DashboardPage() {
     doc_type: DOCUMENT_TYPES[0]?.value ?? "inspection",
     valid_from: "",
     valid_to: "",
-  note: "",
-});
-const [documentFormBusy, setDocumentFormBusy] = useState(false);
-const [documentFormError, setDocumentFormError] = useState<string | null>(null);
-const [documentFormMessage, setDocumentFormMessage] = useState<string | null>(null);
-const [documentEditingId, setDocumentEditingId] = useState<number | null>(null);
-const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; docType: string } | null>(null);
+    note: "",
+  });
+  const [documentFormBusy, setDocumentFormBusy] = useState(false);
+  const [documentFormError, setDocumentFormError] = useState<string | null>(null);
+  const [documentFormMessage, setDocumentFormMessage] = useState<string | null>(null);
+  const [documentEditingId, setDocumentEditingId] = useState<number | null>(null);
+  const [documentEditingInfo, setDocumentEditingInfo] = useState<{ plate: string; docType: string } | null>(null);
 
   const [assignmentForm, setAssignmentForm] = useState<AssignmentFormState>(() => createInitialAssignmentFormState());
   const [assignmentLog, setAssignmentLog] = useState<AssignmentEntry[]>([]);
